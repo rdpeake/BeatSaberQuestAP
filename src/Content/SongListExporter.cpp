@@ -206,7 +206,7 @@ namespace BeatSaberQuestAP::SongListExporter {
                     continue;
                 job.songs.push_back({
                     static_cast<std::string>(level->songName),
-                    Archipelago::OfficialMapIdentifier(static_cast<std::string>(level->levelID)),
+                    Archipelago::OfficialSongLevelId(static_cast<std::string>(level->levelID)),
                     true,
                     DifficultiesOf(level),
                 });

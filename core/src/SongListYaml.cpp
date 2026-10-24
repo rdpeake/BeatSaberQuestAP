@@ -32,6 +32,13 @@ namespace Archipelago {
             return quoted + "\"";
         }
 
+        std::string Trim(std::string const& text) {
+            auto first = text.find_first_not_of(" \t");
+            if (first == std::string::npos)
+                return "";
+            return text.substr(first, text.find_last_not_of(" \t") - first + 1);
+        }
+
         std::string DescribeDifficulty(ExportedDifficulty const& difficulty) {
             return difficulty.characteristic + " " + difficultyNames[difficulty.difficulty] + " (" + std::to_string(difficulty.difficulty) + ")";
         }
@@ -62,6 +69,8 @@ namespace Archipelago {
     }
 
     std::string BuildSongsYaml(std::vector<ExportedSong> songs, std::string const& headerComment) {
+        for (auto& song : songs)
+            song.name = Trim(song.name);
         std::sort(songs.begin(), songs.end(), [](ExportedSong const& left, ExportedSong const& right) {
             if (left.isOfficial != right.isOfficial)
                 return left.isOfficial;

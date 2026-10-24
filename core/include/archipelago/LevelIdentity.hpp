@@ -25,6 +25,8 @@ namespace Archipelago {
     std::string HashFromCustomLevelId(std::string_view levelId);
 
     std::string OfficialMapIdentifier(std::string_view levelId);
+    // the form a YAML `songs:` entry uses, e.g. "100Bills"
+    std::string OfficialSongLevelId(std::string_view levelId);
 
     // BeatSaver keys are lowercase hex; the PC client formats them as uppercase without leading zeros
     std::string CustomMapIdentifier(std::string_view beatSaverKey);

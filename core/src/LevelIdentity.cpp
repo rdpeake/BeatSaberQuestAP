@@ -52,6 +52,10 @@ namespace Archipelago {
         return std::string(officialIdentPrefix) + std::string(levelId);
     }
 
+    std::string OfficialSongLevelId(std::string_view levelId) {
+        return OfficialMapIdentifier(levelId).substr(officialIdentPrefix.size());
+    }
+
     std::string CustomMapIdentifier(std::string_view beatSaverKey) {
         std::string upper = ToUpper(beatSaverKey);
         auto firstSignificant = upper.find_first_not_of('0');

@@ -186,6 +186,7 @@ namespace {
         ExpectEqual(CustomMapIdentifier("01a2b"), std::string("1A2B"), "BeatSaver key formatting");
         ExpectEqual(OfficialMapIdentifier("100Bills"), std::string("OST_100Bills"), "official identifier");
         ExpectEqual(OfficialMapIdentifier("level_Escape"), std::string("OST_Escape"), "legacy prefix stripped");
+        ExpectEqual(OfficialSongLevelId("level_Escape"), std::string("Escape"), "yaml official level id");
         ExpectEqual(HashFromCustomLevelId("custom_level_abc123 WIP"), std::string("ABC123"), "custom hash extraction");
 
         auto official = ParseIdent("OST_Some_Level_OneSaber_3");
@@ -209,7 +210,7 @@ namespace {
 namespace {
     void TestSongListExport() {
         std::vector<ExportedSong> songs = {
-            {"Zebra \"Remix\"", "1a2b", false, {{"Standard", 3}, {"Standard", 4}, {"OneSaber", 4}}},
+            {"Zebra \"Remix\" ", "1a2b", false, {{"Standard", 3}, {"Standard", 4}, {"OneSaber", 4}}},
             {"$100 Bills", "100Bills", true, {{"Standard", 2}, {"Standard", 4}}},
             {"Lawless Only", "3c3c", false, {{"Lawless", 1}, {"Lawless", 3}}},
             {"Zebra \"Remix\"", "4d4d", false, {{"Standard", 1}}},
