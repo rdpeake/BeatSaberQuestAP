@@ -1,5 +1,6 @@
 #include "UI/ArchipelagoMenu.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <functional>
 #include <memory>
@@ -15,7 +16,9 @@
 #include "UnityEngine/Object.hpp"
 #include "UnityEngine/Transform.hpp"
 #include "UnityEngine/UI/Button.hpp"
+#include "UnityEngine/UI/LayoutElement.hpp"
 #include "UnityEngine/UI/VerticalLayoutGroup.hpp"
+#include "TMPro/TextAlignmentOptions.hpp"
 #include "TMPro/TextMeshProUGUI.hpp"
 #include "bsml/shared/BSML-Lite.hpp"
 #include "bsml/shared/BSML.hpp"
@@ -35,6 +38,59 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             UnityW<UnityEngine::UI::Button> downloadButton;
             UnityW<UnityEngine::UI::VerticalLayoutGroup> storeButtonList;
         };
+
+        constexpr float textWidth = 90.0f;
+
+        // TMP text in a layout group reports no height of its own, so size it from its line count
+        UnityW<HMUI::CurvedTextMeshPro> CreateMessageText(UnityEngine::GameObject* container, float fontSize) {
+            auto text = BSML::Lite::CreateText(container, "", fontSize);
+            text->enableWordWrapping = true;
+            text->alignment = TMPro::TextAlignmentOptions::Center;
+            auto layout = text->gameObject->AddComponent<UnityEngine::UI::LayoutElement*>();
+            layout->preferredWidth = textWidth;
+            text->gameObject->SetActive(false);
+            return text;
+        }
+
+        int CountVisibleCharacters(std::string_view line) {
+            int count = 0;
+            bool insideTag = false;
+            for (char character : line) {
+                if (character == '<')
+                    insideTag = true;
+                else if (character == '>')
+                    insideTag = false;
+                else if (!insideTag)
+                    count++;
+            }
+            return count;
+        }
+
+        void SetMessageText(UnityW<HMUI::CurvedTextMeshPro> const& text, std::string const& message) {
+            if (!text)
+                return;
+            HMUI::CurvedTextMeshPro* textComponent = text;
+            textComponent->text = message;
+            textComponent->gameObject->SetActive(!message.empty());
+            if (message.empty())
+                return;
+
+            // average glyph width is a little over half the font size
+            float fontSize = textComponent->fontSize;
+            int charactersPerLine = std::max(1, static_cast<int>(textWidth / (fontSize * 0.55f)));
+            int lineCount = 0;
+            size_t lineStart = 0;
+            while (lineStart <= message.size()) {
+                size_t lineEnd = message.find('\n', lineStart);
+                if (lineEnd == std::string::npos)
+                    lineEnd = message.size();
+                int visibleCharacters = CountVisibleCharacters(std::string_view(message).substr(lineStart, lineEnd - lineStart));
+                lineCount += std::max(1, (visibleCharacters + charactersPerLine - 1) / charactersPerLine);
+                lineStart = lineEnd + 1;
+            }
+            if (auto layout = textComponent->GetComponent<UnityEngine::UI::LayoutElement*>())
+                layout->preferredHeight = lineCount * fontSize * 1.25f;
+        }
 
         // the game's own keyboard has no symbols, so host names and IPs need BSML's full keyboard
         struct TextField {
@@ -74,8 +130,8 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             keyboard->onEnter = [](StringW value) {
                 if (!editingField)
                     return;
-                if (!editingField->write(static_cast<std::string>(value)) && widgets.connectionText)
-                    widgets.connectionText->text = "<color=#FF6060>" + editingField->label + " was not changed: invalid value</color>";
+                if (!editingField->write(static_cast<std::string>(value)))
+                    SetMessageText(widgets.connectionText, "<color=#FF6060>" + editingField->label + " was not changed: invalid value</color>");
                 ShowFieldValue(*editingField);
                 editingField.reset();
             };
@@ -153,8 +209,7 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
 
         void Connect() {
             if (pendingSettings.host.empty() || pendingSettings.slotName.empty()) {
-                if (widgets.connectionText)
-                    widgets.connectionText->text = "<color=#FF6060>Enter a host and slot name first</color>";
+                SetMessageText(widgets.connectionText, "<color=#FF6060>Enter a host and slot name first</color>");
                 return;
             }
             SettingsStore::SaveConnectionSettings(pendingSettings);
@@ -167,7 +222,7 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
 
             auto container = BSML::Lite::CreateScrollableSettingsContainer(viewController->transform);
 
-            widgets.connectionText = BSML::Lite::CreateText(container, "", 4.0f);
+            widgets.connectionText = CreateMessageText(container, 4.0f);
             textFields.clear();
             AddTextField(container, "Host", false, [] { return pendingSettings.host; }, [](std::string const& value) {
                 if (value.empty())
@@ -197,17 +252,16 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             widgets.reconnectButton = BSML::Lite::CreateUIButton(container, "Reconnect now", [] { Session::Instance().ReconnectNow(); });
             widgets.leaveButton = BSML::Lite::CreateUIButton(container, "Leave Archipelago", [] { Session::Instance().LeaveArchipelago(); });
 
-            widgets.contentText = BSML::Lite::CreateText(container, "", 3.5f);
+            widgets.contentText = CreateMessageText(container, 3.5f);
             widgets.downloadButton = BSML::Lite::CreateUIButton(container, "Download missing songs", [] {
                 ContentResolver::Instance().DownloadMissingSongs();
             });
             widgets.storeButtonList = BSML::Lite::CreateVerticalLayoutGroup(container);
 
-            widgets.importText = BSML::Lite::CreateText(container, "", 3.0f);
+            widgets.importText = CreateMessageText(container, 3.0f);
             BSML::Lite::CreateUIButton(container, "Import .apbs playlist", [] {
                 auto summary = PlaylistImporter::ImportPendingPatches();
-                if (widgets.importText)
-                    widgets.importText->text = summary.empty() ? "No .apbs files found in ModData/.../Mods/" MOD_ID " or the Playlists folder" : summary;
+                SetMessageText(widgets.importText, summary.empty() ? "No .apbs files found in ModData/.../Mods/" MOD_ID " or the Playlists folder" : summary);
             });
         }
 
@@ -239,7 +293,7 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
         }
         if (auto unsentChecks = session.GetUnsentCheckCount(); unsentChecks > 0)
             status += "\n" + std::to_string(unsentChecks) + " check(s) waiting to be sent";
-        widgets.connectionText->text = status;
+        SetMessageText(widgets.connectionText, status);
 
         if (widgets.connectButton) {
             widgets.connectButton->interactable = !connecting;
@@ -251,8 +305,7 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             widgets.leaveButton->gameObject->SetActive(inArchipelagoMode || connecting);
 
         auto const& report = ContentResolver::Instance().GetReport();
-        if (widgets.contentText)
-            widgets.contentText->text = inArchipelagoMode ? DescribeContent(report) : "";
+        SetMessageText(widgets.contentText, inArchipelagoMode ? DescribeContent(report) : "");
         if (widgets.downloadButton) {
             widgets.downloadButton->gameObject->SetActive(inArchipelagoMode && online && !report.downloadableKeys.empty());
             widgets.downloadButton->interactable = !report.downloading && !report.checking;

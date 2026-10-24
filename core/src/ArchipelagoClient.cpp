@@ -1,6 +1,7 @@
 #include "archipelago/ArchipelagoClient.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <random>
 
 #include "ixwebsocket/IXWebSocket.h"
@@ -235,6 +236,8 @@ namespace Archipelago {
         socket->disableAutomaticReconnection();
         socket->setHandshakeTimeout(handshakeTimeoutSeconds);
         socket->setPingInterval(pingIntervalSeconds);
+        // the Archipelago server warns uncompressed clients they may stop working
+        socket->enablePerMessageDeflate();
 
         ix::SocketTLSOptions tlsOptions;
         tlsOptions.caFile = certificateAuthorityFile.empty() ? "NONE" : certificateAuthorityFile;
@@ -572,7 +575,8 @@ namespace Archipelago {
                 double sentTime = data.HasMember("time") && data["time"].IsNumber() ? data["time"].GetDouble() : 0;
                 {
                     std::lock_guard lock(stateMutex);
-                    if (!deathLinkTagged || sentTime == lastDeathLinkSentTime)
+                    // rapidjson's default number parsing can be one ulp off, so match the echo by tolerance
+                    if (!deathLinkTagged || std::abs(sentTime - lastDeathLinkSentTime) < 0.001)
                         continue;
                 }
                 DeathLinkEvent deathLink;
