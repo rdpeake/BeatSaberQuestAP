@@ -55,6 +55,7 @@ namespace BeatSaberQuestAP {
         void RetryFailedLookups();
 
         std::optional<std::string> BeatSaverKeyForHash(std::string const& hash) const;
+        std::vector<std::string> HashesForBeatSaverKey(std::string const& beatSaverKey) const;
 
         // records hashes known from elsewhere, such as an imported playlist
         void LearnHashes(std::string const& beatSaverKey, std::vector<std::string> const& hashes);

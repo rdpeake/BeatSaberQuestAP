@@ -184,6 +184,10 @@ namespace BeatSaberQuestAP {
         return keyCache.KeyForHash(hash);
     }
 
+    std::vector<std::string> ContentResolver::HashesForBeatSaverKey(std::string const& beatSaverKey) const {
+        return keyCache.HashesForKey(beatSaverKey);
+    }
+
     std::optional<std::string> ContentResolver::MapIdentifierForLevelId(std::string_view levelId) const {
         if (!Archipelago::IsCustomLevelId(levelId))
             return Archipelago::OfficialMapIdentifier(levelId);

@@ -59,6 +59,7 @@ add_library(archipelago_core STATIC
     ${CMAKE_CURRENT_LIST_DIR}/src/LevelIdentity.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/ProgressionRules.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/SavedSession.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/SeedPlaylists.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/SlotData.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/SongListYaml.cpp
 )

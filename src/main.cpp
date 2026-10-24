@@ -1,5 +1,6 @@
 #include "Content/ContentResolver.hpp"
 #include "Content/PlaylistImporter.hpp"
+#include "Content/SeedPlaylists.hpp"
 #include "Hooks/Hooks.hpp"
 #include "Logger.hpp"
 #include "Session.hpp"
@@ -43,6 +44,7 @@ MOD_EXPORT_FUNC void late_load() {
         ArchipelagoMenu::Refresh();
         Hooks::RefreshLevelList();
         Hooks::RefreshDifficultyLock();
+        SeedPlaylists::Sync();
     });
 
     Hooks::RunWhenMainMenuReady([] { Session::Instance().RestoreSavedSession(); });
@@ -55,6 +57,7 @@ MOD_EXPORT_FUNC void late_load() {
                 PlaylistImporter::ImportPendingPatches();
             }
             ContentResolver::Instance().HandleSongsLoaded();
+            SeedPlaylists::Sync();
         });
     });
 

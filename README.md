@@ -13,7 +13,7 @@ This is a Quest port of [BeatSaberAP](https://github.com/CurrentlyPending/BeatSa
 
 1. Download `BeatSaberQuestAP.qmod` from the latest build.
 2. Drag it into MBF.
-3. You don't need the host's `.apbs` patch: the mod gets the seed's songs from the server. If you drop one into MBF anyway, the mod only reads it for song hashes and doesn't add its playlists to the game.
+3. You don't need the host's `.apbs` patch: the mod gets the seed's songs from the server. If you drop one into MBF anyway, the mod only reads it for song hashes; it builds its own playlists for the seed instead.
 
 ## Playing
 
@@ -27,6 +27,7 @@ Joining a slot puts the game in Archipelago mode, which lasts until you press **
 - The menu lists any seed songs you are missing. Custom maps can be downloaded from BeatSaver with one button; DLC you do not own gets a button that opens its store page.
 - Clearing an unlocked difficulty with no modifiers sends its checks. In accuracy-based modes each grade from C up to the one you reached counts.
 - Song names in level select show how many of their checks are done, for example `[2/3]`.
+- The seed's songs get Archipelago playlists built from the server's slot data: one per map type (Speed, Tech, Midspeed, Acc) in randomized modes, or one for preset modes. They list songs in unlock order and are removed when you leave Archipelago mode.
 - With DeathLink on, failing an Archipelago song kills other players, and their deaths fail your current song. Deaths are not sent while offline.
 
 Outside Archipelago mode the game behaves normally.

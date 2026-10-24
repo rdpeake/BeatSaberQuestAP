@@ -5,6 +5,7 @@
 
 #include "archipelago/LevelIdentity.hpp"
 #include "archipelago/ProgressionRules.hpp"
+#include "archipelago/SeedPlaylists.hpp"
 #include "archipelago/SlotData.hpp"
 #include "archipelago/SongListYaml.hpp"
 #include "rapidjson/document.h"
@@ -84,6 +85,13 @@ namespace {
         auto preset = ParseJson(presetSlotDataJson);
         Expect(preset.gameMode == GameMode::PresetPass, "preset pass mode");
         Expect(preset.mapTypeCounts.empty(), "null map type counts accepted in preset modes");
+
+        auto randomizedGroups = GroupSeedNodes(slotData);
+        Expect(randomizedGroups.size() == 4 && randomizedGroups[1].fileStem == "Tech", "one playlist per map type");
+        ExpectEqual(randomizedGroups[1].nodes, std::vector<uint32_t>({3, 4}), "tech playlist holds the tech nodes in order");
+        Expect(randomizedGroups[0].title.starts_with("Speed - "), "titled like the apworld's playlists");
+        auto presetGroups = GroupSeedNodes(preset);
+        Expect(presetGroups.size() == 1 && presetGroups[0].nodes.size() == preset.nodeToIdent.size(), "preset seeds get one playlist");
 
         auto embedded = ParseJson(R"({
             "node_to_keystr": "{\"1\": \"AAA_Standard_4\"}",
