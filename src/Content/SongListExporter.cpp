@@ -26,6 +26,7 @@
 #include "GlobalNamespace/MainFlowCoordinator.hpp"
 #include "Hooks/Hooks.hpp"
 #include "Logger.hpp"
+#include "MediaScanner.hpp"
 #include "ModPaths.hpp"
 #include "Session.hpp"
 #include "System/Threading/CancellationToken.hpp"
@@ -133,8 +134,10 @@ namespace BeatSaberQuestAP::SongListExporter {
                 std::ofstream file(path, std::ios::binary | std::ios::trunc);
                 file << yaml;
                 file.close();
-                if (file.good())
+                if (file.good()) {
+                    MediaScanner::ScanFile(path);
                     return path;
+                }
                 logger.warn("Could not write {}", path);
             }
             return std::nullopt;
@@ -144,9 +147,14 @@ namespace BeatSaberQuestAP::SongListExporter {
             std::vector<Archipelago::ExportedSong> exportedSongs;
             int customCount = 0;
             int officialCount = 0;
+            int withoutDifficulties = 0;
             for (auto& song : job->songs) {
                 if (song.levelId.empty())
                     continue;
+                if (song.difficulties.empty()) {
+                    withoutDifficulties++;
+                    continue;
+                }
                 (song.isOfficial ? officialCount : customCount)++;
                 exportedSongs.push_back(std::move(song));
             }
@@ -167,9 +175,11 @@ namespace BeatSaberQuestAP::SongListExporter {
             std::string summary = "Exported " + std::to_string(customCount) + " custom and " + std::to_string(officialCount) + " official songs to " + *path;
             if (unknownToBeatSaver > 0)
                 summary += "\n" + std::to_string(unknownToBeatSaver) + " not on BeatSaver were left out";
+            if (withoutDifficulties > 0)
+                summary += "\n" + std::to_string(withoutDifficulties) + " with no readable difficulties were left out";
             if (job->dlcCheckFailed)
                 summary += "\nDLC ownership couldn't be checked, so DLC songs were left out";
-            Session::Instance().AddLogMessage(summary, LogLevel::Debug);
+            Session::Instance().AddLogMessage(summary);
             SetStatus(summary);
         }
 

@@ -61,6 +61,9 @@ namespace BeatSaberQuestAP {
                 logger.warn("Could not list difficulties of {}: {}", static_cast<std::string>(level->levelID), error.what());
                 return true;
             }
+            // nothing listed means the probe failed, not that the map is empty
+            if (difficulties.empty())
+                return true;
             for (auto const& [characteristicName, levelDifficulty] : difficulties) {
                 if (levelDifficulty == difficulty && Archipelago::EqualsIgnoreCase(characteristicName, characteristic))
                     return true;
