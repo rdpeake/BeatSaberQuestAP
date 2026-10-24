@@ -120,6 +120,39 @@ namespace Archipelago {
         return -1;
     }
 
+    std::optional<std::string> DescribeLocation(SlotData const& slotData, std::string const& locationName) {
+        auto mnemonic = slotData.locationNameToMnemonic.find(locationName);
+        if (mnemonic == slotData.locationNameToMnemonic.end())
+            return std::nullopt;
+        return mnemonic->second;
+    }
+
+    std::vector<std::string> FindLocationMismatches(
+        SlotData const& slotData,
+        std::function<std::optional<std::string>(int64_t locationId)> const& locationNameForId
+    ) {
+        constexpr char const* difficultyNames[] = {"Easy", "Normal", "Hard", "Expert", "ExpertPlus"};
+        std::vector<std::string> mismatches;
+        for (auto const& [node, ident] : slotData.nodeToIdent) {
+            auto parsed = ParseIdent(ident);
+            auto songName = slotData.songNames.find(node);
+            if (!parsed || songName == slotData.songNames.end() || parsed->difficulty < 0 || parsed->difficulty > 4)
+                continue;
+            std::string expected = songName->second + " (" + difficultyNames[parsed->difficulty] + ")";
+            for (auto locationId : LocationsForNode(slotData, node)) {
+                auto locationName = locationNameForId(locationId);
+                if (!locationName) {
+                    mismatches.push_back(songName->second + ": check " + std::to_string(locationId) + " is not a location of this game");
+                    continue;
+                }
+                auto description = DescribeLocation(slotData, *locationName);
+                if (description && description->find(expected) == std::string::npos)
+                    mismatches.push_back(expected + ": check " + std::to_string(locationId) + " is \"" + *description + "\"");
+            }
+        }
+        return mismatches;
+    }
+
     std::vector<int64_t> LocationsForNode(SlotData const& slotData, uint32_t node) {
         Progression goalUnlocked;
         goalUnlocked.goalMapUnlocked = true;

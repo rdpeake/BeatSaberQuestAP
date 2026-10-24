@@ -95,6 +95,8 @@ namespace BeatSaberQuestAP {
         void HandleItemsChanged(std::vector<Archipelago::ReceivedItem> const& items);
         void HandlePendingLocationsChanged(std::vector<int64_t> const& unconfirmedLocations);
         void HandleCheckedLocationsChanged(std::vector<int64_t> const& checkedLocations);
+        void VerifyLocationLayout();
+        std::string DescribeCheck(int64_t locationId) const;
         void HandleDeathLink(Archipelago::DeathLinkEvent const& deathLink);
 
         std::unique_ptr<Archipelago::ArchipelagoClient> client;

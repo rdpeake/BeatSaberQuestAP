@@ -406,6 +406,20 @@ namespace Archipelago {
         return slot == 0 ? "Server" : "Player " + std::to_string(slot);
     }
 
+    std::optional<std::string> ArchipelagoClient::GetOwnLocationName(int64_t locationId) const {
+        std::lock_guard lock(stateMutex);
+        auto game = playerGames.find(slotNumber);
+        if (game == playerGames.end())
+            return std::nullopt;
+        auto names = locationNamesByGame.find(game->second);
+        if (names == locationNamesByGame.end())
+            return std::nullopt;
+        auto name = names->second.find(locationId);
+        if (name == names->second.end())
+            return std::nullopt;
+        return name->second;
+    }
+
     ServerMessage ArchipelagoClient::RenderPrintJson(rapidjson::Value const& packet) const {
         ServerMessage message;
         if (packet.HasMember("type") && packet["type"].IsString())

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <set>
 #include <string>
@@ -50,4 +51,14 @@ namespace Archipelago {
 
     // every check a node holds, lowest grade first
     std::vector<int64_t> LocationsForNode(SlotData const& slotData, uint32_t node);
+
+    // the seed's own description of a check, e.g. "[Acc] Ori, Lost in the Storm (Hard) - C"
+    std::optional<std::string> DescribeLocation(SlotData const& slotData, std::string const& locationName);
+
+    // compares each node's computed check ids against the server's location names and the seed's descriptions;
+    // returns one line per check that does not name the node's song and difficulty
+    std::vector<std::string> FindLocationMismatches(
+        SlotData const& slotData,
+        std::function<std::optional<std::string>(int64_t locationId)> const& locationNameForId
+    );
 }

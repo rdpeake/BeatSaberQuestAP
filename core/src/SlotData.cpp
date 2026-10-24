@@ -4,6 +4,8 @@
 #include <functional>
 #include <stdexcept>
 
+#include "archipelago/LevelIdentity.hpp"
+
 namespace Archipelago {
 
     namespace {
@@ -162,8 +164,13 @@ namespace Archipelago {
             if (!value.IsObject())
                 return;
             for (auto const& entry : value.GetObject()) {
-                if (entry.value.IsObject() && entry.value.HasMember("name") && entry.value["name"].IsString())
-                    slotData.songNames[ReadNodeKey(entry.name, "songs")] = entry.value["name"].GetString();
+                if (!entry.value.IsObject())
+                    continue;
+                auto node = ReadNodeKey(entry.name, "songs");
+                if (entry.value.HasMember("name") && entry.value["name"].IsString())
+                    slotData.songNames[node] = entry.value["name"].GetString();
+                if (entry.value.HasMember("map_type") && entry.value["map_type"].IsString())
+                    slotData.nodeMapTypes[node] = ToLower(entry.value["map_type"].GetString());
             }
         });
         WithOptionalValue(slotDataJson, "location_name_to_mnemonic", [&](auto const& value) {

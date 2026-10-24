@@ -33,6 +33,8 @@ namespace Archipelago {
         std::map<uint32_t, std::string> nodeToIdent;
         std::map<std::string, uint32_t> identToNode;
         std::map<uint32_t, std::string> songNames;
+        // randomized modes: "speed", "tech", "midspeed" or "acc" per node
+        std::map<uint32_t, std::string> nodeMapTypes;
         std::vector<int> startNodes;
         // only present in randomized modes
         std::vector<int> mapTypeCounts;

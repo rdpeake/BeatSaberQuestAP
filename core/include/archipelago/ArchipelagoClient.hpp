@@ -100,6 +100,8 @@ namespace Archipelago {
         ConnectionState GetState() const;
         std::string GetSlotAlias() const;
         std::string GetPlayerAlias(int slot) const;
+        // the server's name for one of this slot's locations; nullopt until the data package has arrived
+        std::optional<std::string> GetOwnLocationName(int64_t locationId) const;
 
         void SetReconnectDelays(std::vector<std::chrono::milliseconds> delays);
 

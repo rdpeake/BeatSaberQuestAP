@@ -281,7 +281,48 @@ namespace BeatSaberQuestAP {
         }
         // checks made offline are held by the client and saved until the server confirms them
         client->SendLocationChecks(locations);
+        for (auto locationId : locations)
+            AddLogMessage("Check " + DescribeCheck(locationId), LogLevel::Debug);
         AddLogMessage("Cleared " + played + " at " + finishedLevel.rankName + ": " + std::to_string(locations.size()) + " check(s) " + (IsOnline() ? "sent" : "saved until reconnected"));
+    }
+
+    std::string Session::DescribeCheck(int64_t locationId) const {
+        std::string description = std::to_string(locationId);
+        auto locationName = client ? client->GetOwnLocationName(locationId) : std::nullopt;
+        if (!locationName)
+            return description;
+        description += " \"" + *locationName + "\"";
+        if (auto seedDescription = Archipelago::DescribeLocation(*slotData, *locationName))
+            description += " = " + *seedDescription;
+        return description;
+    }
+
+    // confirms every computed check id names its own song in the seed's descriptions
+    void Session::VerifyLocationLayout() {
+        if (!slotData || !client)
+            return;
+        bool namesAvailable = false;
+        auto mismatches = Archipelago::FindLocationMismatches(*slotData, [&](int64_t locationId) {
+            auto name = client->GetOwnLocationName(locationId);
+            namesAvailable = namesAvailable || name.has_value();
+            return name;
+        });
+        if (!namesAvailable) {
+            AddLogMessage("Could not verify check ids: the server sent no location names", LogLevel::Debug);
+            return;
+        }
+        if (slotData->locationNameToMnemonic.empty()) {
+            AddLogMessage("Could not verify check ids: the seed has no check descriptions", LogLevel::Debug);
+            return;
+        }
+        if (mismatches.empty()) {
+            AddLogMessage("Verified every song's checks against the seed", LogLevel::Debug);
+            return;
+        }
+        AddLogMessage("<color=#FF6B6B>" + std::to_string(mismatches.size()) + " check(s) don't match their song; please report this</color>");
+        for (auto const& mismatch : mismatches)
+            logger.error("Check mismatch: {}", mismatch);
+        AddLogMessage(mismatches.front(), LogLevel::Debug);
     }
 
     void Session::AddChangeListener(std::function<void()> listener) {
@@ -347,6 +388,7 @@ namespace BeatSaberQuestAP {
             ContentResolver::Instance().Begin(*slotData);
         }
         activeSession->passwordRequired = !currentSettings.password.empty();
+        VerifyLocationLayout();
         ContentResolver::Instance().RetryFailedLookups();
         SaveActiveSession();
         NotifyChanged();

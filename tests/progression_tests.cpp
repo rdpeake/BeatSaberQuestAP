@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -217,6 +218,46 @@ namespace {
 }
 
 namespace {
+    // the apworld's location table: names by id, built the way Locations.py builds it
+    std::optional<std::string> ApworldLocationName(int64_t locationId) {
+        constexpr char const* categories[] = {"Speed", "Tech", "Midspeed", "Acc"};
+        constexpr char const* grades[] = {"C", "B", "A", "S", "SS"};
+        int64_t category = locationId / 1000;
+        int64_t withinCategory = locationId % 1000;
+        if (category > 4 || withinCategory / 6 >= 100)
+            return std::nullopt;
+        char songNumber[8];
+        std::snprintf(songNumber, sizeof(songNumber), "%02lld", static_cast<long long>(withinCategory / 6));
+        std::string name = (category > 0 ? "[" + std::string(categories[category - 1]) + "] " : "") + "Song " + songNumber;
+        int64_t gradeOffset = withinCategory % 6;
+        return gradeOffset == 0 ? name : name + " - " + grades[gradeOffset - 1];
+    }
+
+    void TestLocationVerification() {
+        rapidjson::Document document;
+        document.Parse(R"({
+            "songs": {"0": {"name": "Speedy", "map_type": "speed"}, "1": {"name": "Ori", "map_type": "acc"}},
+            "node_to_keystr": {"0": "aaa_Standard_4", "1": "1e445_Standard_2"},
+            "keystr_to_node": {"aaa_Standard_4": 0, "1e445_Standard_2": 1},
+            "start_songs": [0, 1], "game_mode": 1, "map_type_counts": [1, 0, 0, 1], "num_grades": 2,
+            "location_name_to_mnemonic": {
+                "[Speed] Song 00 - C": "[Speed] Speedy (ExpertPlus) - C",
+                "[Speed] Song 00 - B": "[Speed] Speedy (ExpertPlus) - B",
+                "[Acc] Song 00 - C": "[Acc] Ori (Hard) - C",
+                "[Acc] Song 00 - B": "[Acc] Ori (Hard) - B"
+            }
+        })");
+        auto slotData = ParseSlotData(document);
+        ExpectEqual(slotData.nodeMapTypes.at(1), std::string("acc"), "map type per node");
+        Expect(FindLocationMismatches(slotData, ApworldLocationName).empty(), "computed checks name the right songs");
+        auto typedGroups = GroupSeedNodes(slotData);
+        Expect(typedGroups.size() == 2 && typedGroups[1].fileStem == "Acc" && typedGroups[1].nodes == std::vector<uint32_t>({1}), "playlists follow each song's map type");
+        ExpectEqual(DescribeLocation(slotData, "[Acc] Song 00 - B"), std::optional<std::string>("[Acc] Ori (Hard) - B"), "check description");
+
+        slotData.locationNameToMnemonic["[Acc] Song 00 - C"] = "[Acc] Speedy (ExpertPlus) - C";
+        ExpectEqual(FindLocationMismatches(slotData, ApworldLocationName).size(), size_t(1), "a check naming another song is reported");
+    }
+
     void TestSongListExport() {
         std::vector<ExportedSong> songs = {
             {"Zebra \"Remix\" ", "1a2b", false, {{"Standard", 3}, {"Standard", 4}, {"OneSaber", 4}}},
@@ -240,6 +281,7 @@ namespace {
 
 int main() {
     TestSongListExport();
+    TestLocationVerification();
     TestSlotDataParsing();
     TestRandomizedProgression();
     TestPresetProgression();
