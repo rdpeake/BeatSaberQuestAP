@@ -75,13 +75,13 @@
       "additionalData": {}
     },
     {
-      "id": "songdownloader",
-      "versionRange": "^0.8.8",
+      "id": "beatsaverplusplus",
+      "versionRange": "^0.2.1",
       "additionalData": {}
     },
     {
-      "id": "rapidjson-macros",
-      "versionRange": "^2.1.0",
+      "id": "web-utils",
+      "versionRange": "^0.6.5",
       "additionalData": {}
     }
   ]

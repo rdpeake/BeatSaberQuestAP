@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <iterator>
 
-#include "BeatSaverAPI.hpp"
+#include <thread>
+
+#include "beatsaverplusplus/shared/BeatSaver.hpp"
 #include "GlobalNamespace/BeatmapCharacteristicSO.hpp"
 #include "GlobalNamespace/BeatmapKey.hpp"
 #include "GlobalNamespace/BeatmapLevel.hpp"
@@ -58,6 +60,21 @@ namespace BeatSaberQuestAP {
             if (auto level = levelsModel->GetBeatmapLevel(levelId))
                 return level;
             return levelsModel->GetBeatmapLevel("level_" + levelId);
+        }
+
+        // BeatSaver requests block, so they run off the main thread
+        void RunInBackground(std::function<void()> work) {
+            std::thread(std::move(work)).detach();
+        }
+
+        std::vector<std::string> LookUpVersionHashes(std::string const& beatSaverKey) {
+            std::vector<std::string> hashes;
+            auto response = BeatSaver::API::GetBeatmapByKey(beatSaverKey);
+            if (!response.IsSuccessful() || !response.responseData)
+                return hashes;
+            for (auto const& version : response.responseData->Versions)
+                hashes.push_back(version.Hash);
+            return hashes;
         }
 
         GlobalNamespace::BeatmapLevel* FindInstalledCustomLevel(std::vector<std::string> const& hashes) {
@@ -139,12 +156,8 @@ namespace BeatSaberQuestAP {
         std::string key = keysToResolve.back();
         keysToResolve.pop_back();
         int requestGeneration = generation;
-        BeatSaver::API::GetBeatmapByKeyAsync(key, [this, key, requestGeneration](std::optional<BeatSaver::Beatmap> beatmap) {
-            std::vector<std::string> hashes;
-            if (beatmap) {
-                for (auto const& version : beatmap->GetVersions())
-                    hashes.push_back(version.GetHash());
-            }
+        RunInBackground([this, key, requestGeneration] {
+            auto hashes = LookUpVersionHashes(key);
             BSML::MainThreadScheduler::Schedule([this, key, requestGeneration, hashes = std::move(hashes)] {
                 if (requestGeneration != generation)
                     return;
@@ -295,28 +308,27 @@ namespace BeatSaberQuestAP {
         keysAlreadyRedownloaded.insert(key);
         int requestGeneration = generation;
 
-        auto finishOne = [this, key, requestGeneration](bool succeeded) {
-            BSML::MainThreadScheduler::Schedule([this, key, requestGeneration, succeeded] {
+        RunInBackground([this, key, requestGeneration] {
+            std::vector<std::string> hashes;
+            bool succeeded = false;
+            auto response = BeatSaver::API::GetBeatmapByKey(key);
+            if (response.IsSuccessful() && response.responseData && !response.responseData->Versions.empty()) {
+                auto const& beatmap = *response.responseData;
+                for (auto const& version : beatmap.Versions)
+                    hashes.push_back(version.Hash);
+                succeeded = beatmap.Versions.front().DownloadBeatmap(beatmap, nullptr).has_value();
+            }
+            BSML::MainThreadScheduler::Schedule([this, key, requestGeneration, succeeded, hashes = std::move(hashes)] {
                 if (requestGeneration != generation)
                     return;
+                if (!hashes.empty())
+                    keyCache.Store(key, hashes);
                 if (!succeeded)
                     logger.warn("Download failed for {}", key);
                 report.downloadsFinished++;
                 Publish();
                 DownloadNextSong();
             });
-        };
-
-        BeatSaver::API::GetBeatmapByKeyAsync(key, [this, key, finishOne](std::optional<BeatSaver::Beatmap> beatmap) {
-            if (!beatmap || beatmap->GetVersions().empty()) {
-                finishOne(false);
-                return;
-            }
-            std::vector<std::string> hashes;
-            for (auto const& version : beatmap->GetVersions())
-                hashes.push_back(version.GetHash());
-            BSML::MainThreadScheduler::Schedule([this, key, hashes] { keyCache.Store(key, hashes); });
-            BeatSaver::API::DownloadBeatmapAsync(*beatmap, [finishOne](bool error) { finishOne(!error); });
         });
     }
 
