@@ -36,15 +36,19 @@ jobs:
       - name: Point the build at the runner's NDK
         run: echo "$ANDROID_NDK_LATEST_HOME" > ${GITHUB_WORKSPACE}/ndkpath.txt
 
-      - name: Restore qpm dependencies
+      - name: Install qpm
         uses: Fernthedev/qpm-action@v1
         with:
           workflow_token: ${{ secrets.GITHUB_TOKEN }}
-          restore: true
+          restore: false
           cache: true
 
+      # failures are echoed as annotations, which stay readable where raw logs are not
+      - name: Restore qpm dependencies
+        run: ./scripts/annotate-failure.sh "qpm restore" qpm restore
+
       - name: Build and package qmod
-        run: qpm s qmod
+        run: ./scripts/annotate-failure.sh "qmod build" qpm s qmod
 
       - name: Upload qmod
         uses: actions/upload-artifact@v4
