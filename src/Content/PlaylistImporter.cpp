@@ -1,7 +1,10 @@
 #include "Content/PlaylistImporter.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <vector>
 
@@ -16,7 +19,12 @@
 namespace BeatSaberQuestAP::PlaylistImporter {
 
     namespace {
-        // apworld playlists list each song's BeatSaver key with its hash, which lets songs match without going online
+        bool IsBeatSaverKey(std::string_view key) {
+            return !key.empty() && key.size() <= 6 && std::all_of(key.begin(), key.end(), [](char character) { return std::isxdigit(static_cast<unsigned char>(character)); });
+        }
+
+        // apworld playlists list each song's BeatSaver key with its hash, which lets songs match without going online;
+        // preset playlists repeat one hash for every song, so a hash listed more than once is ignored
         void LearnHashesFromPlaylist(std::string const& playlistPath) {
             std::ifstream stream(playlistPath);
             std::stringstream contents;
@@ -25,10 +33,20 @@ namespace BeatSaberQuestAP::PlaylistImporter {
             playlist.Parse(contents.str().c_str());
             if (playlist.HasParseError() || !playlist.IsObject() || !playlist.HasMember("songs") || !playlist["songs"].IsArray())
                 return;
+
+            std::vector<std::pair<std::string, std::string>> keyHashPairs;
+            std::map<std::string, int> occurrencesByHash;
             for (auto const& song : playlist["songs"].GetArray()) {
                 if (!song.IsObject() || !song.HasMember("key") || !song["key"].IsString() || !song.HasMember("hash") || !song["hash"].IsString())
                     continue;
-                ContentResolver::Instance().LearnHashes(song["key"].GetString(), {song["hash"].GetString()});
+                std::string hash = Archipelago::ToUpper(song["hash"].GetString());
+                occurrencesByHash[hash]++;
+                if (IsBeatSaverKey(song["key"].GetString()))
+                    keyHashPairs.emplace_back(song["key"].GetString(), hash);
+            }
+            for (auto const& [key, hash] : keyHashPairs) {
+                if (occurrencesByHash[hash] == 1)
+                    ContentResolver::Instance().LearnHashes(key, {hash});
             }
         }
     }

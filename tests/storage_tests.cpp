@@ -45,6 +45,21 @@ namespace {
         Expect(!reloaded.KeyForHash("000000").has_value(), "unknown hash");
     }
 
+    void TestKeyCacheDropsSharedHashes(std::filesystem::path const& workDirectory) {
+        auto cachePath = (workDirectory / "shared" / "keys.json").string();
+        {
+            BeatSaverKeyCache cache(cachePath);
+            cache.Store("1a2b", {"SAME", "AAA111"});
+            cache.Store("3c4d", {"SAME"});
+            cache.Save();
+        }
+        BeatSaverKeyCache reloaded(cachePath);
+        reloaded.Load();
+        Expect(!reloaded.KeyForHash("SAME").has_value(), "hash claimed by two keys is dropped");
+        Expect(reloaded.HashesForKey("1a2b") == std::vector<std::string>({"AAA111"}), "other hashes of the key are kept");
+        Expect(!reloaded.Contains("3c4d"), "key left without hashes is looked up again");
+    }
+
     void TestApbsExtraction(std::filesystem::path const& workDirectory) {
         auto outputDirectory = workDirectory / "Playlists";
         auto written = ExtractPlaylistsFromApbs(FIXTURE_DIRECTORY "/sample.apbs", outputDirectory.string());
@@ -94,6 +109,7 @@ int main() {
     std::filesystem::remove_all(workDirectory);
 
     TestKeyCacheRoundTrip(workDirectory);
+    TestKeyCacheDropsSharedHashes(workDirectory);
     TestApbsExtraction(workDirectory);
     TestSavedSessionRoundTrip(workDirectory);
 
