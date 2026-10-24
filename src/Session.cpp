@@ -183,6 +183,19 @@ namespace BeatSaberQuestAP {
         return Archipelago::LevelIdentity{*mapIdentifier, std::string(characteristic), difficulty}.ToIdent();
     }
 
+    std::vector<std::string> Session::SeedDifficultiesFor(std::string_view levelId) const {
+        std::vector<std::string> seedDifficulties;
+        auto mapIdentifier = ContentResolver::Instance().MapIdentifierForLevelId(levelId);
+        if (!slotData || !mapIdentifier)
+            return seedDifficulties;
+        for (auto const& [node, ident] : slotData->nodeToIdent) {
+            auto parsed = Archipelago::ParseIdent(ident);
+            if (parsed && Archipelago::EqualsIgnoreCase(parsed->mapIdentifier, *mapIdentifier))
+                seedDifficulties.push_back(parsed->characteristic + " " + DescribeDifficulty(parsed->difficulty));
+        }
+        return seedDifficulties;
+    }
+
     bool Session::IsIdentInSeed(std::string const& ident) const {
         return slotData && Archipelago::FindNodeForIdent(*slotData, ident).has_value();
     }
@@ -194,13 +207,19 @@ namespace BeatSaberQuestAP {
 
         auto ident = IdentFor(finishedLevel.levelId, finishedLevel.characteristic, finishedLevel.difficulty);
         auto node = ident ? Archipelago::FindNodeForIdent(*slotData, *ident) : std::nullopt;
-        std::string songName = finishedLevel.levelId;
-        if (node && slotData->songNames.contains(*node))
-            songName = slotData->songNames.at(*node);
+        std::string songName = finishedLevel.songName.empty() ? finishedLevel.levelId : finishedLevel.songName;
         std::string played = songName + " (" + finishedLevel.characteristic + " " + DescribeDifficulty(finishedLevel.difficulty) + ")";
 
         if (!node) {
-            AddLogMessage(played + " is not a song in this seed", LogLevel::Debug);
+            auto seedDifficulties = SeedDifficultiesFor(finishedLevel.levelId);
+            if (seedDifficulties.empty()) {
+                AddLogMessage(played + " is not a song in this seed", LogLevel::Debug);
+            } else {
+                std::string expected;
+                for (auto const& seedDifficulty : seedDifficulties)
+                    expected += (expected.empty() ? "" : " or ") + seedDifficulty;
+                AddLogMessage(played + ": no checks, this seed uses " + expected, LogLevel::Debug);
+            }
             return;
         }
 

@@ -85,8 +85,19 @@ namespace {
             static_cast<std::string>(beatmapKey.beatmapCharacteristic->serializedName),
             static_cast<int>(beatmapKey.difficulty)
         );
-        if (!ident || !session.IsIdentInSeed(*ident))
+        if (!ident)
             return std::nullopt;
+        if (!session.IsIdentInSeed(*ident)) {
+            // a visible seed song played on another difficulty would never send a check
+            auto seedDifficulties = session.SeedDifficultiesFor(static_cast<std::string>(beatmapKey.levelId));
+            if (seedDifficulties.empty())
+                return std::nullopt;
+            std::string expected;
+            for (auto const& seedDifficulty : seedDifficulties)
+                expected += (expected.empty() ? "" : " or ") + seedDifficulty;
+            std::string shortExpected = seedDifficulties.size() == 1 ? seedDifficulties.front().substr(seedDifficulties.front().find(' ') + 1) : "Seed difficulty";
+            return PlayBlock{shortExpected + " only", "Archipelago only counts this song on " + expected};
+        }
         if (!Archipelago::IsIdentUnlocked(session.GetProgression(), *ident))
             return PlayBlock{"Locked", "This difficulty is still locked in Archipelago"};
         if (AreModifiersEnabled())

@@ -28,6 +28,7 @@ namespace BeatSaberQuestAP {
 
     struct FinishedLevel {
         std::string levelId;
+        std::string songName;
         std::string characteristic;
         int difficulty = 0;
         bool cleared = false;
@@ -64,6 +65,8 @@ namespace BeatSaberQuestAP {
         // nullopt when the level cannot be matched to an ident yet (unknown custom hash)
         std::optional<std::string> IdentFor(std::string_view levelId, std::string_view characteristic, int difficulty) const;
         bool IsIdentInSeed(std::string const& ident) const;
+        // the seed's characteristic and difficulty pairs for this level, e.g. "Standard Expert+"; empty when the song is not in the seed
+        std::vector<std::string> SeedDifficultiesFor(std::string_view levelId) const;
 
         void HandleLevelFinished(FinishedLevel const& finishedLevel);
 

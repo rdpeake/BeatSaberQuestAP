@@ -2,6 +2,7 @@
 
 #include "GlobalNamespace/BeatmapCharacteristicSO.hpp"
 #include "GlobalNamespace/BeatmapKey.hpp"
+#include "GlobalNamespace/BeatmapLevel.hpp"
 #include "GlobalNamespace/GameplayModifiers.hpp"
 #include "GlobalNamespace/LevelCompletionResults.hpp"
 #include "GlobalNamespace/MenuTransitionsHelper.hpp"
@@ -39,6 +40,8 @@ namespace {
 
         BeatSaberQuestAP::FinishedLevel finishedLevel;
         finishedLevel.levelId = static_cast<std::string>(beatmapKey.levelId);
+        if (auto level = setupData->beatmapLevel)
+            finishedLevel.songName = static_cast<std::string>(level->songName);
         finishedLevel.characteristic = static_cast<std::string>(beatmapKey.beatmapCharacteristic->serializedName);
         finishedLevel.difficulty = static_cast<int>(beatmapKey.difficulty);
         finishedLevel.cleared = results->levelEndStateType == LevelCompletionResults::LevelEndStateType::Cleared;

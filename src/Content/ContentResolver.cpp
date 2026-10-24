@@ -40,15 +40,51 @@ namespace BeatSaberQuestAP {
             return ident.characteristic + " " + (knownDifficulty ? difficultyNames[ident.difficulty] : std::to_string(ident.difficulty));
         }
 
-        bool LevelHasDifficulty(GlobalNamespace::BeatmapLevel* level, std::string_view characteristic, int difficulty) {
-            auto enumerator = level->GetBeatmapKeys()->GetEnumerator();
-            while (enumerator->i___System__Collections__IEnumerator()->MoveNext()) {
-                GlobalNamespace::BeatmapKey key = enumerator->Current;
-                if (!key.beatmapCharacteristic || static_cast<int>(key.difficulty) != difficulty)
+        // walks characteristics then their difficulties, the same enumerators PlaylistManager relies on;
+        // reading whole BeatmapKey structs from GetBeatmapKeys() reported nothing on device
+        std::vector<std::pair<std::string, int>> ListDifficulties(GlobalNamespace::BeatmapLevel* level) {
+            std::vector<std::pair<std::string, int>> difficulties;
+            auto characteristics = level->GetCharacteristics()->GetEnumerator();
+            while (characteristics->i___System__Collections__IEnumerator()->MoveNext()) {
+                UnityW<GlobalNamespace::BeatmapCharacteristicSO> characteristic = characteristics->Current;
+                if (!characteristic)
                     continue;
-                if (Archipelago::EqualsIgnoreCase(static_cast<std::string>(key.beatmapCharacteristic->serializedName), characteristic))
+                std::string characteristicName = static_cast<std::string>(characteristic->serializedName);
+                auto levelDifficulties = level->GetDifficulties(characteristic)->GetEnumerator();
+                while (levelDifficulties->i___System__Collections__IEnumerator()->MoveNext())
+                    difficulties.emplace_back(characteristicName, static_cast<int>(levelDifficulties->Current));
+            }
+            return difficulties;
+        }
+
+        std::string DescribeAvailableDifficulties(GlobalNamespace::BeatmapLevel* level) {
+            std::string available;
+            try {
+                for (auto const& [characteristicName, levelDifficulty] : ListDifficulties(level)) {
+                    bool knownDifficulty = levelDifficulty >= 0 && levelDifficulty < static_cast<int>(std::size(difficultyNames));
+                    available += (available.empty() ? "" : ", ") + characteristicName + " " + (knownDifficulty ? difficultyNames[levelDifficulty] : std::to_string(levelDifficulty));
+                }
+            } catch (std::exception const&) {
+            }
+            return available.empty() ? "none found" : available;
+        }
+
+        bool LevelHasDifficulty(GlobalNamespace::BeatmapLevel* level, std::string_view characteristic, int difficulty) {
+            std::vector<std::pair<std::string, int>> difficulties;
+            try {
+                difficulties = ListDifficulties(level);
+            } catch (std::exception const& error) {
+                logger.warn("Could not list difficulties of {}: {}", static_cast<std::string>(level->levelID), error.what());
+                return true;
+            }
+            for (auto const& [characteristicName, levelDifficulty] : difficulties) {
+                if (levelDifficulty == difficulty && Archipelago::EqualsIgnoreCase(characteristicName, characteristic))
                     return true;
             }
+            std::string available;
+            for (auto const& [characteristicName, levelDifficulty] : difficulties)
+                available += (available.empty() ? "" : ", ") + characteristicName + "/" + std::to_string(levelDifficulty);
+            logger.info("{} lacks {}/{}; it has: {}", static_cast<std::string>(level->levelID), characteristic, difficulty, available.empty() ? "nothing" : available);
             return false;
         }
 
@@ -256,7 +292,7 @@ namespace BeatSaberQuestAP {
                     continue;
                 }
                 if (!LevelHasDifficulty(level, ident.characteristic, ident.difficulty)) {
-                    unavailable.push_back(static_cast<std::string>(level->songName) + " has no " + DescribeDifficulty(ident));
+                    unavailable.push_back(static_cast<std::string>(level->songName) + " has no " + DescribeDifficulty(ident) + " (has " + DescribeAvailableDifficulties(level) + ")");
                     continue;
                 }
                 if (std::find(officialLevelIds.begin(), officialLevelIds.end(), static_cast<std::string>(level->levelID)) == officialLevelIds.end())
@@ -277,7 +313,7 @@ namespace BeatSaberQuestAP {
             }
             if (!LevelHasDifficulty(level, ident.characteristic, ident.difficulty)) {
                 if (keysAlreadyRedownloaded.contains(ident.beatSaverKey))
-                    unavailable.push_back("BeatSaver map " + ident.beatSaverKey + " has no " + DescribeDifficulty(ident));
+                    unavailable.push_back(static_cast<std::string>(level->songName) + " (" + ident.beatSaverKey + ") has no " + DescribeDifficulty(ident) + " (has " + DescribeAvailableDifficulties(level) + ")");
                 else
                     downloadableKeys.insert(ident.beatSaverKey);
             }
