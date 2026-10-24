@@ -1,6 +1,8 @@
 #include "UI/ArchipelagoMenu.hpp"
 
 #include <charconv>
+#include <functional>
+#include <memory>
 
 #include "Content/ContentResolver.hpp"
 #include "Content/PlaylistImporter.hpp"
@@ -14,8 +16,11 @@
 #include "UnityEngine/Transform.hpp"
 #include "UnityEngine/UI/Button.hpp"
 #include "UnityEngine/UI/VerticalLayoutGroup.hpp"
+#include "TMPro/TextMeshProUGUI.hpp"
 #include "bsml/shared/BSML-Lite.hpp"
 #include "bsml/shared/BSML.hpp"
+#include "bsml/shared/BSML/Components/Keyboard/ModalKeyboard.hpp"
+#include "bsml/shared/BSML/Components/ModalView.hpp"
 
 namespace BeatSaberQuestAP::ArchipelagoMenu {
 
@@ -31,9 +36,70 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             UnityW<UnityEngine::UI::VerticalLayoutGroup> storeButtonList;
         };
 
+        // the game's own keyboard has no symbols, so host names and IPs need BSML's full keyboard
+        struct TextField {
+            std::string label;
+            bool masked = false;
+            std::function<std::string()> read;
+            std::function<bool(std::string const&)> write;
+            UnityW<UnityEngine::UI::Button> button;
+        };
+
         MenuWidgets widgets;
         Archipelago::ConnectionSettings pendingSettings;
         std::vector<std::string> shownStorePackIds;
+        std::vector<std::shared_ptr<TextField>> textFields;
+        UnityW<BSML::ModalKeyboard> keyboard;
+        std::shared_ptr<TextField> editingField;
+
+        void ShowFieldValue(TextField const& field) {
+            if (!field.button)
+                return;
+            std::string value = field.read();
+            std::string shown = field.masked ? std::string(value.size(), '*') : value;
+            if (shown.empty())
+                shown = "<color=#888888>(empty)</color>";
+            if (auto text = field.button->GetComponentInChildren<TMPro::TextMeshProUGUI*>())
+                text->text = field.label + ": " + shown;
+        }
+
+        void CreateKeyboard(HMUI::ViewController* viewController) {
+            BSML::parse_and_construct("<modal-keyboard clear-on-open='true'/>", viewController->transform, nullptr);
+            auto keyboards = viewController->GetComponentsInChildren<BSML::ModalKeyboard*>(true);
+            if (keyboards.size() == 0) {
+                logger.error("Could not create the connection keyboard");
+                return;
+            }
+            keyboard = keyboards[keyboards.size() - 1];
+            keyboard->onEnter = [](StringW value) {
+                if (!editingField)
+                    return;
+                if (!editingField->write(static_cast<std::string>(value)) && widgets.connectionText)
+                    widgets.connectionText->text = "<color=#FF6060>" + editingField->label + " was not changed: invalid value</color>";
+                ShowFieldValue(*editingField);
+                editingField.reset();
+            };
+        }
+
+        void EditField(std::shared_ptr<TextField> const& field) {
+            if (!keyboard)
+                return;
+            editingField = field;
+            keyboard->modalView->Show();
+            // clear-on-open runs as the modal enables, so the current value goes in afterwards
+            keyboard->SetText(field->masked ? "" : field->read());
+        }
+
+        void AddTextField(UnityEngine::GameObject* container, std::string label, bool masked, std::function<std::string()> read, std::function<bool(std::string const&)> write) {
+            auto field = std::make_shared<TextField>();
+            field->label = std::move(label);
+            field->masked = masked;
+            field->read = std::move(read);
+            field->write = std::move(write);
+            field->button = BSML::Lite::CreateUIButton(container, field->label, [field] { EditField(field); });
+            ShowFieldValue(*field);
+            textFields.push_back(field);
+        }
 
         std::string ColorFor(Archipelago::ConnectionState state) {
             switch (state) {
@@ -102,22 +168,30 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             auto container = BSML::Lite::CreateScrollableSettingsContainer(viewController->transform);
 
             widgets.connectionText = BSML::Lite::CreateText(container, "", 4.0f);
-            BSML::Lite::CreateStringSetting(container, "Host", pendingSettings.host, [](StringW value) {
-                pendingSettings.host = static_cast<std::string>(value);
+            textFields.clear();
+            AddTextField(container, "Host", false, [] { return pendingSettings.host; }, [](std::string const& value) {
+                if (value.empty())
+                    return false;
+                pendingSettings.host = value;
+                return true;
             });
-            BSML::Lite::CreateStringSetting(container, "Port", std::to_string(pendingSettings.port), [](StringW value) {
-                std::string text = value;
+            AddTextField(container, "Port", false, [] { return std::to_string(pendingSettings.port); }, [](std::string const& value) {
                 int port = 0;
-                auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), port);
-                if (error == std::errc() && port > 0 && port < 65536)
-                    pendingSettings.port = port;
+                auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), port);
+                if (error != std::errc() || end != value.data() + value.size() || port <= 0 || port > 65535)
+                    return false;
+                pendingSettings.port = port;
+                return true;
             });
-            BSML::Lite::CreateStringSetting(container, "Slot", pendingSettings.slotName, [](StringW value) {
-                pendingSettings.slotName = static_cast<std::string>(value);
+            AddTextField(container, "Slot", false, [] { return pendingSettings.slotName; }, [](std::string const& value) {
+                pendingSettings.slotName = value;
+                return true;
             });
-            BSML::Lite::CreateStringSetting(container, "Password", "", [](StringW value) {
-                pendingSettings.password = static_cast<std::string>(value);
+            AddTextField(container, "Password", true, [] { return pendingSettings.password; }, [](std::string const& value) {
+                pendingSettings.password = value;
+                return true;
             });
+            CreateKeyboard(viewController);
 
             widgets.connectButton = BSML::Lite::CreateUIButton(container, "Connect", [] { Connect(); });
             widgets.reconnectButton = BSML::Lite::CreateUIButton(container, "Reconnect now", [] { Session::Instance().ReconnectNow(); });
