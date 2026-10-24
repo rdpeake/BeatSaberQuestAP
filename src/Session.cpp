@@ -13,6 +13,12 @@ namespace BeatSaberQuestAP {
 
     namespace {
         constexpr char const* deathLinkCause = "too many bloqs :(";
+        constexpr size_t maximumLogMessages = 40;
+        constexpr char const* difficultyNames[] = {"Easy", "Normal", "Hard", "Expert", "Expert+"};
+
+        std::string DescribeDifficulty(int difficulty) {
+            return difficulty >= 0 && difficulty < 5 ? difficultyNames[difficulty] : std::to_string(difficulty);
+        }
 
         std::optional<Archipelago::SlotData> ParseSavedSlotData(std::string const& slotDataJson) {
             rapidjson::Document document;
@@ -47,7 +53,13 @@ namespace BeatSaberQuestAP {
         callbacks.onItemsChanged = [this](std::vector<Archipelago::ReceivedItem> const& items) { HandleItemsChanged(items); };
         callbacks.onPendingLocationsChanged = [this](std::vector<int64_t> const& unconfirmedLocations) { HandlePendingLocationsChanged(unconfirmedLocations); };
         callbacks.onDeathLink = [this](Archipelago::DeathLinkEvent const& deathLink) { HandleDeathLink(deathLink); };
-        callbacks.onServerMessage = [](std::string const& message) { logger.info("Server: {}", message); };
+        callbacks.onServerMessage = [this](Archipelago::ServerMessage const& message) {
+            logger.info("Server [{}]: {}", message.type, message.text);
+            // other players' item sends and hints would drown out what matters to this player
+            bool itemTraffic = message.type == "ItemSend" || message.type == "ItemCheat" || message.type == "Hint";
+            if (!itemTraffic || message.involvesThisSlot)
+                AddLogMessage(message.text);
+        };
 
         client = std::make_unique<Archipelago::ArchipelagoClient>(
             std::move(callbacks),
@@ -70,6 +82,7 @@ namespace BeatSaberQuestAP {
         slotData = std::move(savedSlotData);
         progression = Archipelago::ComputeProgression(*slotData, activeSession->receivedItemNames);
         currentSettings = {activeSession->host, activeSession->port, activeSession->slotName, ""};
+        knownItemCount = activeSession->receivedItemNames.size();
         logger.info("Restored Archipelago session for {} with {} unlocked song(s)", activeSession->slotName, progression.unlockedIdents.size());
         ContentResolver::Instance().Begin(*slotData);
 
@@ -115,6 +128,7 @@ namespace BeatSaberQuestAP {
         activeSession.reset();
         slotData.reset();
         progression = {};
+        knownItemCount = 0;
         passwordNeeded = false;
         goalReported = false;
         statusText = "Not connected";
@@ -177,30 +191,47 @@ namespace BeatSaberQuestAP {
             return;
 
         auto ident = IdentFor(finishedLevel.levelId, finishedLevel.characteristic, finishedLevel.difficulty);
-        if (!ident || !IsIdentInSeed(*ident)) {
-            logger.info("Finished level {} is not part of this seed", finishedLevel.levelId);
+        auto node = ident ? Archipelago::FindNodeForIdent(*slotData, *ident) : std::nullopt;
+        std::string songName = finishedLevel.levelId;
+        if (node && slotData->songNames.contains(*node))
+            songName = slotData->songNames.at(*node);
+        std::string played = songName + " (" + finishedLevel.characteristic + " " + DescribeDifficulty(finishedLevel.difficulty) + ")";
+
+        if (!node) {
+            AddLogMessage(played + " is not a song in this seed");
             return;
         }
 
-        if (finishedLevel.failed && !causedByDeathLink)
+        if (finishedLevel.failed && !causedByDeathLink) {
             client->SendDeathLink(deathLinkCause);
+            if (slotData->deathLinkEnabled)
+                AddLogMessage("Failed " + played + (IsOnline() ? ": DeathLink sent" : ": offline, DeathLink not sent"));
+        }
 
         if (!finishedLevel.cleared)
             return;
-        if (finishedLevel.usedModifiers || finishedLevel.practice) {
-            logger.info("Clear of {} ignored: modifiers or practice mode were used", *ident);
+        if (finishedLevel.usedModifiers) {
+            AddLogMessage("Cleared " + played + " with modifiers: no checks (turn modifiers off)");
+            return;
+        }
+        if (finishedLevel.practice) {
+            AddLogMessage("Cleared " + played + " in practice mode: no checks");
             return;
         }
         if (!Archipelago::IsIdentUnlocked(progression, *ident)) {
-            logger.info("Clear of {} ignored: difficulty is not unlocked", *ident);
+            AddLogMessage("Cleared " + played + ", but that difficulty is still locked: no checks");
             return;
         }
 
-        auto node = Archipelago::FindNodeForIdent(*slotData, *ident);
         auto locations = Archipelago::LocationsForClear(*slotData, progression, *node, Archipelago::GradeIndexFromRankName(finishedLevel.rankName));
-        logger.info("Cleared {} (node {}, rank {}): {} check(s){}", *ident, *node, finishedLevel.rankName, locations.size(), IsOnline() ? "" : ", held until reconnected");
+        if (locations.empty()) {
+            std::string reason = Archipelago::IsAccuracyMode(slotData->gameMode) ? "rank " + finishedLevel.rankName + " is below C" : "the goal needs more Bloq Keys";
+            AddLogMessage("Cleared " + played + ": no checks, " + reason);
+            return;
+        }
         // checks made offline are held by the client and saved until the server confirms them
         client->SendLocationChecks(locations);
+        AddLogMessage("Cleared " + played + " at " + finishedLevel.rankName + ": " + std::to_string(locations.size()) + " check(s) " + (IsOnline() ? "sent" : "saved until reconnected"));
     }
 
     void Session::AddChangeListener(std::function<void()> listener) {
@@ -210,6 +241,18 @@ namespace BeatSaberQuestAP {
     void Session::NotifyChanged() {
         for (auto const& listener : changeListeners)
             listener();
+    }
+
+    void Session::AddLogMessage(std::string message) {
+        logger.info("Log: {}", message);
+        logMessages.push_back(std::move(message));
+        while (logMessages.size() > maximumLogMessages)
+            logMessages.pop_front();
+        NotifyChanged();
+    }
+
+    std::deque<std::string> const& Session::GetLogMessages() const {
+        return logMessages;
     }
 
     void Session::EnterArchipelagoMode(Archipelago::SlotData const& newSlotData, std::string const& slotDataJson) {
@@ -231,9 +274,12 @@ namespace BeatSaberQuestAP {
     }
 
     void Session::HandleStateChanged(Archipelago::ConnectionState state, std::string const& detail) {
+        bool stateChanged = state != connectionState;
         connectionState = state;
         statusText = detail;
         logger.info("Connection: {}", detail);
+        if (stateChanged && state != Archipelago::ConnectionState::Connecting)
+            logMessages.push_back(detail);
         if (state == Archipelago::ConnectionState::Failed && activeSession)
             passwordNeeded = detail.find("wrong password") != std::string::npos;
         NotifyChanged();
@@ -263,6 +309,17 @@ namespace BeatSaberQuestAP {
         itemNames.reserve(items.size());
         for (auto const& item : items)
             itemNames.push_back(item.itemName);
+        // a full resync resends everything, so only items past the known count are new
+        if (items.size() > knownItemCount && knownItemCount > 0) {
+            for (size_t index = knownItemCount; index < items.size(); index++) {
+                auto const& item = items[index];
+                std::string itemName = item.itemName.empty() ? "item " + std::to_string(item.itemId) : item.itemName;
+                AddLogMessage("Received " + itemName + " from " + client->GetPlayerAlias(item.sendingPlayer));
+            }
+        } else if (knownItemCount == 0 && !items.empty()) {
+            AddLogMessage(std::to_string(items.size()) + " item(s) received so far");
+        }
+        knownItemCount = items.size();
         activeSession->receivedItemNames = itemNames;
         progression = Archipelago::ComputeProgression(*slotData, itemNames);
         logger.info("{} item(s) received, {} song(s) unlocked", items.size(), progression.unlockedIdents.size());
@@ -270,6 +327,7 @@ namespace BeatSaberQuestAP {
         if (progression.victoryReceived && !goalReported) {
             client->SendGoalComplete();
             goalReported = true;
+            AddLogMessage("Goal complete!");
         }
         SaveActiveSession();
         NotifyChanged();
@@ -284,7 +342,7 @@ namespace BeatSaberQuestAP {
     }
 
     void Session::HandleDeathLink(Archipelago::DeathLinkEvent const& deathLink) {
-        logger.info("DeathLink from {}: {}", deathLink.source, deathLink.cause);
+        AddLogMessage("DeathLink from " + deathLink.source + (deathLink.cause.empty() ? "" : ": " + deathLink.cause));
         DeathLink::ForceFailCurrentLevel();
     }
 }

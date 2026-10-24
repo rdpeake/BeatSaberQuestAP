@@ -33,6 +33,7 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             UnityW<HMUI::CurvedTextMeshPro> connectionText;
             UnityW<HMUI::CurvedTextMeshPro> contentText;
             UnityW<HMUI::CurvedTextMeshPro> importText;
+            UnityW<HMUI::CurvedTextMeshPro> logText;
             UnityW<UnityEngine::UI::Button> connectButton;
             UnityW<UnityEngine::UI::Button> reconnectButton;
             UnityW<UnityEngine::UI::Button> leaveButton;
@@ -258,6 +259,7 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             widgets.reconnectButton = BSML::Lite::CreateUIButton(container, "Reconnect now", [] { Session::Instance().ReconnectNow(); });
             widgets.leaveButton = BSML::Lite::CreateUIButton(container, "Leave Archipelago", [] { Session::Instance().LeaveArchipelago(); });
 
+            widgets.logText = CreateMessageText(container, 3.0f);
             widgets.contentText = CreateMessageText(container, 3.5f);
             widgets.downloadButton = BSML::Lite::CreateUIButton(container, "Download missing songs", [] {
                 ContentResolver::Instance().DownloadMissingSongs();
@@ -312,6 +314,13 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
 
         auto const& report = ContentResolver::Instance().GetReport();
         SetMessageText(widgets.contentText, inArchipelagoMode ? DescribeContent(report) : "");
+
+        constexpr size_t shownLogMessages = 10;
+        auto const& logMessages = session.GetLogMessages();
+        std::string log;
+        for (size_t index = logMessages.size() > shownLogMessages ? logMessages.size() - shownLogMessages : 0; index < logMessages.size(); index++)
+            log += (log.empty() ? "" : "\n") + logMessages[index];
+        SetMessageText(widgets.logText, log.empty() ? "" : "<color=#AAAAAA>Recent messages</color>\n" + log);
         if (widgets.downloadButton) {
             widgets.downloadButton->gameObject->SetActive(inArchipelagoMode && online && !report.downloadableKeys.empty());
             widgets.downloadButton->interactable = !report.downloading && !report.checking;

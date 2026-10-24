@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "archipelago/SlotData.hpp"
+#include "rapidjson/document.h"
 
 namespace ix {
     class WebSocket;
@@ -45,6 +46,13 @@ namespace Archipelago {
         int sendingPlayer = 0;
     };
 
+    struct ServerMessage {
+        std::string type;
+        std::string text;
+        // item sends and hints only matter to the player when this slot found or receives the item
+        bool involvesThisSlot = false;
+    };
+
     struct DeathLinkEvent {
         std::string source;
         std::string cause;
@@ -57,7 +65,7 @@ namespace Archipelago {
         std::function<void(std::vector<ReceivedItem> const& allItems)> onItemsChanged;
         std::function<void(std::vector<int64_t> const& unconfirmedLocations)> onPendingLocationsChanged;
         std::function<void(DeathLinkEvent const& deathLink)> onDeathLink;
-        std::function<void(std::string const& message)> onServerMessage;
+        std::function<void(ServerMessage const& message)> onServerMessage;
     };
 
     using Dispatcher = std::function<void(std::function<void()>)>;
@@ -90,6 +98,7 @@ namespace Archipelago {
 
         ConnectionState GetState() const;
         std::string GetSlotAlias() const;
+        std::string GetPlayerAlias(int slot) const;
 
         void SetReconnectDelays(std::vector<std::chrono::milliseconds> delays);
 
@@ -106,6 +115,7 @@ namespace Archipelago {
         void CancelReconnectTimer();
         void BeginReconnectAttempt();
         void HandlePacket(std::string const& packetText);
+        ServerMessage RenderPrintJson(rapidjson::Value const& packet) const;
         void SendPackets(std::string const& packetArrayJson);
         void FlushPendingLocationChecks();
         void SetState(ConnectionState state, std::string const& detail);
@@ -134,6 +144,10 @@ namespace Archipelago {
         bool reconnectTimerCancelled = false;
 
         std::map<int64_t, std::string> itemNamesById;
+        std::map<std::string, std::map<int64_t, std::string>> itemNamesByGame;
+        std::map<std::string, std::map<int64_t, std::string>> locationNamesByGame;
+        std::map<int, std::string> playerAliases;
+        std::map<int, std::string> playerGames;
         std::vector<ReceivedItem> receivedItems;
         std::set<int64_t> pendingLocationChecks;
         bool goalPending = false;

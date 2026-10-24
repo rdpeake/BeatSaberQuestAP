@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <optional>
 #include <random>
 
 #include "ixwebsocket/IXWebSocket.h"
@@ -85,19 +87,6 @@ namespace Archipelago {
                     description += ": " + std::string(code);
             }
             return description;
-        }
-
-        std::string FlattenPrintJson(rapidjson::Value const& packet) {
-            std::string text;
-            auto data = packet.FindMember("data");
-            if (data == packet.MemberEnd() || !data->value.IsArray())
-                return text;
-            for (auto const& part : data->value.GetArray()) {
-                auto partText = part.FindMember("text");
-                if (partText != part.MemberEnd() && partText->value.IsString())
-                    text += partText->value.GetString();
-            }
-            return text;
         }
 
         std::vector<int64_t> ReadLocationList(rapidjson::Value const& packet, char const* key) {
@@ -397,6 +386,71 @@ namespace Archipelago {
         return slotAlias.empty() ? settings.slotName : slotAlias;
     }
 
+    std::string ArchipelagoClient::GetPlayerAlias(int slot) const {
+        std::lock_guard lock(stateMutex);
+        auto alias = playerAliases.find(slot);
+        if (alias != playerAliases.end())
+            return alias->second;
+        return slot == 0 ? "Server" : "Player " + std::to_string(slot);
+    }
+
+    ServerMessage ArchipelagoClient::RenderPrintJson(rapidjson::Value const& packet) const {
+        ServerMessage message;
+        if (packet.HasMember("type") && packet["type"].IsString())
+            message.type = packet["type"].GetString();
+
+        std::lock_guard lock(stateMutex);
+        auto readInt = [](rapidjson::Value const& value, char const* key) -> std::optional<int64_t> {
+            if (!value.HasMember(key))
+                return std::nullopt;
+            auto const& member = value[key];
+            if (member.IsInt64())
+                return member.GetInt64();
+            if (member.IsString())
+                return std::atoll(member.GetString());
+            return std::nullopt;
+        };
+        auto lookUpName = [&](std::map<std::string, std::map<int64_t, std::string>> const& namesByGame, int owner, int64_t id) -> std::optional<std::string> {
+            auto game = playerGames.find(owner);
+            if (game == playerGames.end())
+                return std::nullopt;
+            auto names = namesByGame.find(game->second);
+            if (names == namesByGame.end())
+                return std::nullopt;
+            auto name = names->second.find(id);
+            if (name == names->second.end())
+                return std::nullopt;
+            return name->second;
+        };
+
+        if (packet.HasMember("data") && packet["data"].IsArray()) {
+            for (auto const& part : packet["data"].GetArray()) {
+                if (!part.IsObject() || !part.HasMember("text") || !part["text"].IsString())
+                    continue;
+                std::string text = part["text"].GetString();
+                std::string partType = part.HasMember("type") && part["type"].IsString() ? part["type"].GetString() : "text";
+                int owner = static_cast<int>(readInt(part, "player").value_or(0));
+                if (partType == "player_id") {
+                    auto alias = playerAliases.find(std::atoi(text.c_str()));
+                    if (alias != playerAliases.end())
+                        text = alias->second;
+                } else if (partType == "item_id") {
+                    if (auto name = lookUpName(itemNamesByGame, owner, std::atoll(text.c_str())))
+                        text = *name;
+                } else if (partType == "location_id") {
+                    if (auto name = lookUpName(locationNamesByGame, owner, std::atoll(text.c_str())))
+                        text = *name;
+                }
+                message.text += text;
+            }
+        }
+
+        bool receivesItem = readInt(packet, "receiving") == slotNumber;
+        bool foundItem = packet.HasMember("item") && packet["item"].IsObject() && readInt(packet["item"], "player") == slotNumber;
+        message.involvesThisSlot = receivesItem || foundItem;
+        return message;
+    }
+
     void ArchipelagoClient::NotifyPendingLocationsChanged() {
         if (callbacks.onPendingLocationsChanged)
             callbacks.onPendingLocationsChanged(GetPendingLocationChecks());
@@ -414,10 +468,19 @@ namespace Archipelago {
             std::string_view command = packet["cmd"].GetString();
 
             if (command == "RoomInfo") {
-                SendPackets(BuildPacket("GetDataPackage", [](JsonWriter& writer) {
+                // every game in the room, so item and location names in messages can be shown
+                std::set<std::string> roomGames = {std::string(gameName)};
+                if (packet.HasMember("games") && packet["games"].IsArray()) {
+                    for (auto const& game : packet["games"].GetArray()) {
+                        if (game.IsString())
+                            roomGames.insert(game.GetString());
+                    }
+                }
+                SendPackets(BuildPacket("GetDataPackage", [&](JsonWriter& writer) {
                     writer.Key("games");
                     writer.StartArray();
-                    WriteString(writer, gameName);
+                    for (auto const& game : roomGames)
+                        WriteString(writer, game);
                     writer.EndArray();
                 }));
             } else if (command == "DataPackage") {
@@ -425,13 +488,23 @@ namespace Archipelago {
                 {
                     std::lock_guard lock(stateMutex);
                     auto data = packet.FindMember("data");
-                    if (data != packet.MemberEnd() && data->value.HasMember("games")) {
-                        auto const& games = data->value["games"];
-                        auto game = games.FindMember(gameName.data());
-                        if (game != games.MemberEnd() && game->value.HasMember("item_name_to_id")) {
-                            for (auto const& entry : game->value["item_name_to_id"].GetObject())
-                                itemNamesById[entry.value.GetInt64()] = entry.name.GetString();
+                    if (data != packet.MemberEnd() && data->value.HasMember("games") && data->value["games"].IsObject()) {
+                        for (auto const& game : data->value["games"].GetObject()) {
+                            std::string name = game.name.GetString();
+                            if (game.value.HasMember("item_name_to_id") && game.value["item_name_to_id"].IsObject()) {
+                                for (auto const& entry : game.value["item_name_to_id"].GetObject()) {
+                                    if (entry.value.IsInt64())
+                                        itemNamesByGame[name][entry.value.GetInt64()] = entry.name.GetString();
+                                }
+                            }
+                            if (game.value.HasMember("location_name_to_id") && game.value["location_name_to_id"].IsObject()) {
+                                for (auto const& entry : game.value["location_name_to_id"].GetObject()) {
+                                    if (entry.value.IsInt64())
+                                        locationNamesByGame[name][entry.value.GetInt64()] = entry.name.GetString();
+                                }
+                            }
                         }
+                        itemNamesById = itemNamesByGame[std::string(gameName)];
                     }
                     connectSettings = settings;
                 }
@@ -483,8 +556,17 @@ namespace Archipelago {
                     reconnectAttempt = 0;
                     teamNumber = packet.HasMember("team") && packet["team"].IsInt() ? packet["team"].GetInt() : 0;
                     slotNumber = packet.HasMember("slot") && packet["slot"].IsInt() ? packet["slot"].GetInt() : 0;
+                    if (packet.HasMember("slot_info") && packet["slot_info"].IsObject()) {
+                        for (auto const& entry : packet["slot_info"].GetObject()) {
+                            if (entry.value.IsObject() && entry.value.HasMember("game") && entry.value["game"].IsString())
+                                playerGames[std::atoi(entry.name.GetString())] = entry.value["game"].GetString();
+                        }
+                    }
                     if (packet.HasMember("players") && packet["players"].IsArray()) {
                         for (auto const& player : packet["players"].GetArray()) {
+                            if (player.HasMember("team") && player["team"].IsInt() && player["team"].GetInt() == teamNumber
+                                && player.HasMember("slot") && player["slot"].IsInt() && player.HasMember("alias") && player["alias"].IsString())
+                                playerAliases[player["slot"].GetInt()] = player["alias"].GetString();
                             bool isThisSlot = player.HasMember("team") && player["team"].IsInt() && player["team"].GetInt() == teamNumber
                                 && player.HasMember("slot") && player["slot"].IsInt() && player["slot"].GetInt() == slotNumber;
                             if (isThisSlot && player.HasMember("alias") && player["alias"].IsString())
@@ -585,8 +667,8 @@ namespace Archipelago {
                 if (callbacks.onDeathLink)
                     callbacks.onDeathLink(deathLink);
             } else if (command == "PrintJSON") {
-                std::string message = FlattenPrintJson(packet);
-                if (!message.empty() && callbacks.onServerMessage)
+                ServerMessage message = RenderPrintJson(packet);
+                if (!message.text.empty() && callbacks.onServerMessage)
                     callbacks.onServerMessage(message);
             }
         }

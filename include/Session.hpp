@@ -1,5 +1,6 @@
 #pragma once
 
+#include <deque>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -57,6 +58,10 @@ namespace BeatSaberQuestAP {
         void AddChangeListener(std::function<void()> listener);
         void NotifyChanged();
 
+        // shown in the Archipelago menu, newest last
+        void AddLogMessage(std::string message);
+        std::deque<std::string> const& GetLogMessages() const;
+
     private:
         Session() = default;
         void EnsureClient();
@@ -79,5 +84,7 @@ namespace BeatSaberQuestAP {
         bool passwordNeeded = false;
         bool goalReported = false;
         std::vector<std::function<void()>> changeListeners;
+        std::deque<std::string> logMessages;
+        size_t knownItemCount = 0;
     };
 }
