@@ -7,6 +7,7 @@
 
 #include "Content/ContentResolver.hpp"
 #include "Content/PlaylistImporter.hpp"
+#include "Content/SongListExporter.hpp"
 #include "HMUI/CurvedTextMeshPro.hpp"
 #include "HMUI/ViewController.hpp"
 #include "Logger.hpp"
@@ -34,6 +35,8 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             UnityW<HMUI::CurvedTextMeshPro> contentText;
             UnityW<HMUI::CurvedTextMeshPro> importText;
             UnityW<HMUI::CurvedTextMeshPro> logText;
+            UnityW<HMUI::CurvedTextMeshPro> exportText;
+            UnityW<UnityEngine::UI::Button> exportButton;
             UnityW<UnityEngine::UI::Button> connectButton;
             UnityW<UnityEngine::UI::Button> reconnectButton;
             UnityW<UnityEngine::UI::Button> leaveButton;
@@ -278,6 +281,9 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
                 auto summary = PlaylistImporter::ImportPendingPatches();
                 SetMessageText(widgets.importText, summary.empty() ? "No .apbs files found in ModData/.../Mods/" MOD_ID " or the Playlists folder" : summary);
             });
+
+            widgets.exportText = CreateMessageText(container, 3.0f);
+            widgets.exportButton = BSML::Lite::CreateUIButton(container, "Export song list for YAML", [] { SongListExporter::Export(); });
         }
 
         void HandleDidActivate(HMUI::ViewController* viewController, bool firstActivation, bool, bool) {
@@ -337,5 +343,9 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             widgets.downloadButton->interactable = !report.downloading && !report.checking;
         }
         RebuildStoreButtons(inArchipelagoMode ? report : ContentReport{});
+
+        SetMessageText(widgets.exportText, SongListExporter::GetStatusText());
+        if (widgets.exportButton)
+            widgets.exportButton->interactable = !SongListExporter::IsExporting();
     }
 }

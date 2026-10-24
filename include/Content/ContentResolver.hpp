@@ -54,6 +54,8 @@ namespace BeatSaberQuestAP {
         // retries BeatSaver lookups that failed, typically because the headset was offline
         void RetryFailedLookups();
 
+        std::optional<std::string> BeatSaverKeyForHash(std::string const& hash) const;
+
         // records hashes known from elsewhere, such as an imported playlist
         void LearnHashes(std::string const& beatSaverKey, std::vector<std::string> const& hashes);
 

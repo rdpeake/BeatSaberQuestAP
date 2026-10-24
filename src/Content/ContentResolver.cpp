@@ -1,4 +1,5 @@
 #include "Content/ContentResolver.hpp"
+#include "Content/LevelDifficulties.hpp"
 
 #include <algorithm>
 #include <iterator>
@@ -40,27 +41,10 @@ namespace BeatSaberQuestAP {
             return ident.characteristic + " " + (knownDifficulty ? difficultyNames[ident.difficulty] : std::to_string(ident.difficulty));
         }
 
-        // walks characteristics then their difficulties, the same enumerators PlaylistManager relies on;
-        // reading whole BeatmapKey structs from GetBeatmapKeys() reported nothing on device
-        std::vector<std::pair<std::string, int>> ListDifficulties(GlobalNamespace::BeatmapLevel* level) {
-            std::vector<std::pair<std::string, int>> difficulties;
-            auto characteristics = level->GetCharacteristics()->GetEnumerator();
-            while (characteristics->i___System__Collections__IEnumerator()->MoveNext()) {
-                UnityW<GlobalNamespace::BeatmapCharacteristicSO> characteristic = characteristics->Current;
-                if (!characteristic)
-                    continue;
-                std::string characteristicName = static_cast<std::string>(characteristic->serializedName);
-                auto levelDifficulties = level->GetDifficulties(characteristic)->GetEnumerator();
-                while (levelDifficulties->i___System__Collections__IEnumerator()->MoveNext())
-                    difficulties.emplace_back(characteristicName, static_cast<int>(levelDifficulties->Current));
-            }
-            return difficulties;
-        }
-
         std::string DescribeAvailableDifficulties(GlobalNamespace::BeatmapLevel* level) {
             std::string available;
             try {
-                for (auto const& [characteristicName, levelDifficulty] : ListDifficulties(level)) {
+                for (auto const& [characteristicName, levelDifficulty] : ListLevelDifficulties(level)) {
                     bool knownDifficulty = levelDifficulty >= 0 && levelDifficulty < static_cast<int>(std::size(difficultyNames));
                     available += (available.empty() ? "" : ", ") + characteristicName + " " + (knownDifficulty ? difficultyNames[levelDifficulty] : std::to_string(levelDifficulty));
                 }
@@ -72,7 +56,7 @@ namespace BeatSaberQuestAP {
         bool LevelHasDifficulty(GlobalNamespace::BeatmapLevel* level, std::string_view characteristic, int difficulty) {
             std::vector<std::pair<std::string, int>> difficulties;
             try {
-                difficulties = ListDifficulties(level);
+                difficulties = ListLevelDifficulties(level);
             } catch (std::exception const& error) {
                 logger.warn("Could not list difficulties of {}: {}", static_cast<std::string>(level->levelID), error.what());
                 return true;
@@ -191,6 +175,10 @@ namespace BeatSaberQuestAP {
             return;
         keyCache.Store(beatSaverKey, hashes);
         keyCache.Save();
+    }
+
+    std::optional<std::string> ContentResolver::BeatSaverKeyForHash(std::string const& hash) const {
+        return keyCache.KeyForHash(hash);
     }
 
     std::optional<std::string> ContentResolver::MapIdentifierForLevelId(std::string_view levelId) const {

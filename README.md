@@ -30,6 +30,12 @@ Joining a slot puts the game in Archipelago mode, which lasts until you press **
 
 Outside Archipelago mode the game behaves normally.
 
+## Building a song list for your YAML
+
+Press **Export song list for YAML** in the Archipelago menu. You don't need to be connected. It writes `BeatSaberAP-songs.yaml` to the headset's `Download` folder, or to the mod's folder if that can't be written. The file lists every installed custom song, the base game and extras, and any DLC you own.
+
+Copy its `songs:` block under `Beat Saber:` in your YAML, set `game_mode` to `presetPass` or `presetAccuracy`, and delete songs you don't want. Each entry uses the song's hardest Standard difficulty, and a comment lists the other difficulties it has. Custom songs that BeatSaver doesn't know are left out.
+
 ## Differences from the PC client
 
 Seeds, items and location ids match the apworld, so PC and Quest players can share a room. A few client-side behaviours are deliberately different:

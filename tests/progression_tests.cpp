@@ -6,6 +6,7 @@
 #include "archipelago/LevelIdentity.hpp"
 #include "archipelago/ProgressionRules.hpp"
 #include "archipelago/SlotData.hpp"
+#include "archipelago/SongListYaml.hpp"
 #include "rapidjson/document.h"
 
 using namespace Archipelago;
@@ -205,7 +206,30 @@ namespace {
     }
 }
 
+namespace {
+    void TestSongListExport() {
+        std::vector<ExportedSong> songs = {
+            {"Zebra \"Remix\"", "1a2b", false, {{"Standard", 3}, {"Standard", 4}, {"OneSaber", 4}}},
+            {"$100 Bills", "100Bills", true, {{"Standard", 2}, {"Standard", 4}}},
+            {"Lawless Only", "3c3c", false, {{"Lawless", 1}, {"Lawless", 3}}},
+            {"Zebra \"Remix\"", "4d4d", false, {{"Standard", 1}}},
+            {"No Usable Difficulties", "5e5e", false, {{"MissingCharacteristic", 2}}},
+        };
+        std::string yaml = BuildSongsYaml(songs, "Exported test list\nsecond line");
+
+        Expect(yaml.starts_with("# Exported test list\n# second line\nBeat Saber:\n"), "header comments and section");
+        Expect(yaml.find("    \"$100 Bills\":\n      levelid: \"100Bills\"\n      difficulty: 4\n      characteristic: Standard\n      is_official: true\n") != std::string::npos, "official song uses hardest Standard difficulty");
+        Expect(yaml.find("$100 Bills") < yaml.find("Lawless Only"), "official songs listed first");
+        Expect(yaml.find("    \"Zebra \\\"Remix\\\"\":\n      levelid: \"1a2b\"") != std::string::npos, "quotes in names are escaped");
+        Expect(yaml.find("# also available: Standard Expert (3), OneSaber ExpertPlus (4)") != std::string::npos, "other difficulties listed as a comment");
+        Expect(yaml.find("    \"Zebra \\\"Remix\\\" [4d4d]\":") != std::string::npos, "duplicate titles get their key appended");
+        Expect(yaml.find("levelid: \"3c3c\"\n      difficulty: 3\n      characteristic: Lawless") != std::string::npos, "falls back to another characteristic");
+        Expect(yaml.find("5e5e") == std::string::npos, "songs with no supported difficulty are skipped");
+    }
+}
+
 int main() {
+    TestSongListExport();
     TestSlotDataParsing();
     TestRandomizedProgression();
     TestPresetProgression();
