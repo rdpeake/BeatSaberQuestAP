@@ -65,7 +65,6 @@ namespace BeatSaberQuestAP {
         void ResolveNextUnknownKey();
         void WaitForSongsThenEvaluate();
         void Evaluate();
-        void EvaluateOfficialEntitlements();
         void DownloadNextSong();
         void FinishDownloads();
         void Publish();

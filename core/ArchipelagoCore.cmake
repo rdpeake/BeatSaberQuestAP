@@ -52,7 +52,6 @@ find_package(Threads REQUIRED)
 target_link_libraries(ixwebsocket_static PUBLIC mbedtls mbedx509 mbedcrypto z Threads::Threads)
 
 add_library(archipelago_core STATIC
-    ${CMAKE_CURRENT_LIST_DIR}/src/ApbsArchive.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/ArchipelagoClient.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/BeatSaverKeyCache.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/CertificateStore.cpp

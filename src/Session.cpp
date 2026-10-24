@@ -16,11 +16,6 @@ namespace BeatSaberQuestAP {
     namespace {
         constexpr char const* deathLinkCause = "too many bloqs :(";
         constexpr size_t maximumLogMessages = 80;
-        constexpr char const* difficultyNames[] = {"Easy", "Normal", "Hard", "Expert", "Expert+"};
-
-        std::string DescribeDifficulty(int difficulty) {
-            return difficulty >= 0 && difficulty < 5 ? difficultyNames[difficulty] : std::to_string(difficulty);
-        }
 
         std::optional<Archipelago::SlotData> ParseSavedSlotData(std::string const& slotDataJson) {
             rapidjson::Document document;
@@ -183,7 +178,7 @@ namespace BeatSaberQuestAP {
         auto mapIdentifier = ContentResolver::Instance().MapIdentifierForLevelId(levelId);
         if (!mapIdentifier)
             return std::nullopt;
-        return Archipelago::LevelIdentity{*mapIdentifier, std::string(characteristic), difficulty}.ToIdent();
+        return Archipelago::MakeIdent(*mapIdentifier, characteristic, difficulty);
     }
 
     std::vector<std::string> Session::SeedDifficultiesFor(std::string_view levelId) const {
@@ -191,10 +186,9 @@ namespace BeatSaberQuestAP {
         auto mapIdentifier = ContentResolver::Instance().MapIdentifierForLevelId(levelId);
         if (!slotData || !mapIdentifier)
             return seedDifficulties;
-        for (auto const& [node, ident] : slotData->nodeToIdent) {
-            auto parsed = Archipelago::ParseIdent(ident);
-            if (parsed && Archipelago::EqualsIgnoreCase(parsed->mapIdentifier, *mapIdentifier))
-                seedDifficulties.push_back(parsed->characteristic + " " + DescribeDifficulty(parsed->difficulty));
+        for (auto node : Archipelago::NodesForMap(*slotData, *mapIdentifier)) {
+            if (auto parsed = Archipelago::ParseIdent(slotData->nodeToIdent.at(node)))
+                seedDifficulties.push_back(Archipelago::DescribeDifficulty({parsed->characteristic, parsed->difficulty}));
         }
         return seedDifficulties;
     }
@@ -209,17 +203,15 @@ namespace BeatSaberQuestAP {
             return std::find(checked.begin(), checked.end(), location) != checked.end()
                 || std::find(unconfirmed.begin(), unconfirmed.end(), location) != unconfirmed.end();
         };
-        std::optional<CheckProgress> progress;
-        for (auto const& [node, ident] : slotData->nodeToIdent) {
-            auto parsed = Archipelago::ParseIdent(ident);
-            if (!parsed || !Archipelago::EqualsIgnoreCase(parsed->mapIdentifier, *mapIdentifier))
-                continue;
-            if (!progress)
-                progress.emplace();
+        auto nodes = Archipelago::NodesForMap(*slotData, *mapIdentifier);
+        if (nodes.empty())
+            return std::nullopt;
+        CheckProgress progress;
+        for (auto node : nodes) {
             for (auto location : Archipelago::LocationsForNode(*slotData, node)) {
-                progress->total++;
+                progress.total++;
                 if (isDone(location))
-                    progress->completed++;
+                    progress.completed++;
             }
         }
         return progress;
@@ -237,7 +229,7 @@ namespace BeatSaberQuestAP {
         auto ident = IdentFor(finishedLevel.levelId, finishedLevel.characteristic, finishedLevel.difficulty);
         auto node = ident ? Archipelago::FindNodeForIdent(*slotData, *ident) : std::nullopt;
         std::string songName = finishedLevel.songName.empty() ? finishedLevel.levelId : finishedLevel.songName;
-        std::string played = songName + " (" + finishedLevel.characteristic + " " + DescribeDifficulty(finishedLevel.difficulty) + ")";
+        std::string played = songName + " (" + Archipelago::DescribeDifficulty({finishedLevel.characteristic, finishedLevel.difficulty}) + ")";
 
         if (!node) {
             auto seedDifficulties = SeedDifficultiesFor(finishedLevel.levelId);

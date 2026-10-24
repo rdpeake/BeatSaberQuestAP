@@ -118,6 +118,8 @@ namespace Archipelago {
         void CancelReconnectTimer();
         void BeginReconnectAttempt();
         void HandlePacket(std::string const& packetText);
+        using NamesByGame = std::map<std::string, std::map<int64_t, std::string>>;
+        std::optional<std::string> LookUpName(NamesByGame const& namesByGame, int slot, int64_t id) const;
         ServerMessage RenderPrintJson(rapidjson::Value const& packet) const;
         void SendPackets(std::string const& packetArrayJson);
         void FlushPendingLocationChecks();
@@ -148,9 +150,8 @@ namespace Archipelago {
         std::condition_variable reconnectTimerSignal;
         bool reconnectTimerCancelled = false;
 
-        std::map<int64_t, std::string> itemNamesById;
-        std::map<std::string, std::map<int64_t, std::string>> itemNamesByGame;
-        std::map<std::string, std::map<int64_t, std::string>> locationNamesByGame;
+        NamesByGame itemNamesByGame;
+        NamesByGame locationNamesByGame;
         std::map<int, std::string> playerAliases;
         std::map<int, std::string> playerGames;
         std::vector<ReceivedItem> receivedItems;

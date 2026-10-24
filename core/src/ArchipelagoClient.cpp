@@ -173,7 +173,6 @@ namespace Archipelago {
             sessionEstablished = resumingSession;
             reconnectAttempt = 0;
             receivedItems.clear();
-            itemNamesById.clear();
             if (!resumingSession) {
                 pendingLocationChecks.clear();
                 confirmedLocationChecks.clear();
@@ -406,18 +405,23 @@ namespace Archipelago {
         return slot == 0 ? "Server" : "Player " + std::to_string(slot);
     }
 
-    std::optional<std::string> ArchipelagoClient::GetOwnLocationName(int64_t locationId) const {
+    std::optional<std::string> ArchipelagoClient::LookUpName(NamesByGame const& namesByGame, int slot, int64_t id) const {
         std::lock_guard lock(stateMutex);
-        auto game = playerGames.find(slotNumber);
+        auto game = playerGames.find(slot);
         if (game == playerGames.end())
             return std::nullopt;
-        auto names = locationNamesByGame.find(game->second);
-        if (names == locationNamesByGame.end())
+        auto names = namesByGame.find(game->second);
+        if (names == namesByGame.end())
             return std::nullopt;
-        auto name = names->second.find(locationId);
+        auto name = names->second.find(id);
         if (name == names->second.end())
             return std::nullopt;
         return name->second;
+    }
+
+    std::optional<std::string> ArchipelagoClient::GetOwnLocationName(int64_t locationId) const {
+        std::lock_guard lock(stateMutex);
+        return LookUpName(locationNamesByGame, slotNumber, locationId);
     }
 
     ServerMessage ArchipelagoClient::RenderPrintJson(rapidjson::Value const& packet) const {
@@ -436,18 +440,6 @@ namespace Archipelago {
                 return std::atoll(member.GetString());
             return std::nullopt;
         };
-        auto lookUpName = [&](std::map<std::string, std::map<int64_t, std::string>> const& namesByGame, int owner, int64_t id) -> std::optional<std::string> {
-            auto game = playerGames.find(owner);
-            if (game == playerGames.end())
-                return std::nullopt;
-            auto names = namesByGame.find(game->second);
-            if (names == namesByGame.end())
-                return std::nullopt;
-            auto name = names->second.find(id);
-            if (name == names->second.end())
-                return std::nullopt;
-            return name->second;
-        };
 
         if (packet.HasMember("data") && packet["data"].IsArray()) {
             for (auto const& part : packet["data"].GetArray()) {
@@ -461,10 +453,10 @@ namespace Archipelago {
                     if (alias != playerAliases.end())
                         text = alias->second;
                 } else if (partType == "item_id") {
-                    if (auto name = lookUpName(itemNamesByGame, owner, std::atoll(text.c_str())))
+                    if (auto name = LookUpName(itemNamesByGame, owner, std::atoll(text.c_str())))
                         text = *name;
                 } else if (partType == "location_id") {
-                    if (auto name = lookUpName(locationNamesByGame, owner, std::atoll(text.c_str())))
+                    if (auto name = LookUpName(locationNamesByGame, owner, std::atoll(text.c_str())))
                         text = *name;
                 }
                 message.text += text;
@@ -541,7 +533,6 @@ namespace Archipelago {
                                 }
                             }
                         }
-                        itemNamesById = itemNamesByGame[std::string(gameName)];
                     }
                     connectSettings = settings;
                 }
@@ -677,8 +668,9 @@ namespace Archipelago {
                             item.itemId = networkItem["item"].GetInt64();
                             item.locationId = networkItem["location"].GetInt64();
                             item.sendingPlayer = networkItem["player"].GetInt();
-                            auto name = itemNamesById.find(item.itemId);
-                            item.itemName = name != itemNamesById.end() ? name->second : "";
+                            auto const& ownItemNames = itemNamesByGame[std::string(gameName)];
+                            auto name = ownItemNames.find(item.itemId);
+                            item.itemName = name != ownItemNames.end() ? name->second : "";
                             receivedItems.push_back(std::move(item));
                         }
                         itemsSnapshot = receivedItems;

@@ -113,7 +113,6 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
         bool showDebugMessages = false;
         Archipelago::ConnectionSettings pendingSettings;
         std::vector<std::string> shownStorePackIds;
-        std::vector<std::shared_ptr<TextField>> textFields;
         UnityW<BSML::ModalKeyboard> keyboard;
         std::shared_ptr<TextField> editingField;
 
@@ -163,7 +162,6 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             field->write = std::move(write);
             field->button = BSML::Lite::CreateUIButton(container, field->label, [field] { EditField(field); });
             ShowFieldValue(*field);
-            textFields.push_back(field);
         }
 
         std::string ColorFor(Archipelago::ConnectionState state) {
@@ -232,7 +230,6 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             auto container = BSML::Lite::CreateScrollableSettingsContainer(viewController->transform);
 
             widgets.connectionText = CreateMessageText(container, 4.0f);
-            textFields.clear();
             AddTextField(container, "Host", false, [] { return pendingSettings.host; }, [](std::string const& value) {
                 if (value.empty())
                     return false;

@@ -15,10 +15,5 @@
   ],
   "libraryFiles": [],
   "fileCopies": [],
-  "copyExtensions": [
-    {
-      "extension": "apbs",
-      "destination": "/sdcard/ModData/com.beatgames.beatsaber/Mods/BeatSaberQuestAP/"
-    }
-  ]
+  "copyExtensions": []
 }

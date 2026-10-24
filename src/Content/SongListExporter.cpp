@@ -14,16 +14,14 @@
 #include "beatsaber-hook/shared/utils/typedefs-wrappers.hpp"
 #include "beatsaverplusplus/shared/BeatSaver.hpp"
 #include "bsml/shared/BSML/MainThreadScheduler.hpp"
-#include "bsml/shared/Helpers/getters.hpp"
 #include "Content/ContentResolver.hpp"
-#include "Content/LevelDifficulties.hpp"
+#include "Content/GameLevels.hpp"
 #include "GlobalNamespace/BeatmapLevel.hpp"
 #include "GlobalNamespace/BeatmapLevelPack.hpp"
 #include "GlobalNamespace/BeatmapLevelsModel.hpp"
 #include "GlobalNamespace/BeatmapLevelsRepository.hpp"
 #include "GlobalNamespace/EntitlementStatus.hpp"
 #include "GlobalNamespace/IEntitlementModel.hpp"
-#include "GlobalNamespace/MainFlowCoordinator.hpp"
 #include "Hooks/Hooks.hpp"
 #include "Logger.hpp"
 #include "ModPaths.hpp"
@@ -62,17 +60,6 @@ namespace BeatSaberQuestAP::SongListExporter {
         void SetStatus(std::string text) {
             statusText = std::move(text);
             Session::Instance().NotifyChanged();
-        }
-
-        std::vector<Archipelago::ExportedDifficulty> DifficultiesOf(GlobalNamespace::BeatmapLevel* level) {
-            std::vector<Archipelago::ExportedDifficulty> difficulties;
-            try {
-                for (auto const& [characteristic, difficulty] : ListLevelDifficulties(level))
-                    difficulties.push_back({characteristic, difficulty});
-            } catch (std::exception const& error) {
-                logger.warn("Could not list difficulties of {}: {}", static_cast<std::string>(level->levelID), error.what());
-            }
-            return difficulties;
         }
 
         // BeatSaver downloads are named "<key> (<song> - <mapper>)"
@@ -208,7 +195,7 @@ namespace BeatSaberQuestAP::SongListExporter {
                     static_cast<std::string>(level->songName),
                     Archipelago::OfficialSongLevelId(static_cast<std::string>(level->levelID)),
                     true,
-                    DifficultiesOf(level),
+                    GameLevels::ListDifficulties(level),
                 });
             }
         }
@@ -226,7 +213,7 @@ namespace BeatSaberQuestAP::SongListExporter {
                     static_cast<std::string>(level->songName),
                     key ? Archipelago::ToLower(*key) : "",
                     false,
-                    DifficultiesOf(level),
+                    GameLevels::ListDifficulties(level),
                 });
                 if (!key && !hash.empty())
                     job.songsAwaitingKey.emplace(hash, job.songs.size() - 1);
@@ -319,9 +306,7 @@ namespace BeatSaberQuestAP::SongListExporter {
         job->pendingSteps = 1;
         try {
             AddCustomSongs(*job);
-            auto mainFlowCoordinator = BSML::Helpers::GetMainFlowCoordinator();
-            GlobalNamespace::BeatmapLevelsModel* levelsModel = mainFlowCoordinator ? mainFlowCoordinator->_beatmapLevelsModel : nullptr;
-            if (levelsModel) {
+            if (auto levelsModel = GameLevels::GetBeatmapLevelsModel()) {
                 if (auto ostRepository = levelsModel->ostAndExtrasBeatmapLevelsRepository; ostRepository && ostRepository->_beatmapLevelPacks) {
                     for (auto pack : ostRepository->_beatmapLevelPacks)
                         AddOfficialPack(*job, pack);

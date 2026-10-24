@@ -13,7 +13,7 @@ This is a Quest port of [BeatSaberAP](https://github.com/CurrentlyPending/BeatSa
 
 1. Download `BeatSaberQuestAP.qmod` from the latest build.
 2. Drag it into MBF.
-3. You don't need the host's `.apbs` patch: the mod gets the seed's songs from the server. If you drop one into MBF anyway, the mod only reads it for song hashes; it builds its own playlists for the seed instead.
+3. You don't need the host's `.apbs` patch: the mod gets the seed's songs from the server and builds the seed's playlists itself.
 
 ## Playing
 

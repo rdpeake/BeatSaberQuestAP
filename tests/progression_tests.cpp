@@ -193,7 +193,6 @@ namespace {
     }
 
     void TestIdents() {
-        ExpectEqual(CustomMapIdentifier("01a2b"), std::string("1A2B"), "BeatSaver key formatting");
         ExpectEqual(OfficialMapIdentifier("100Bills"), std::string("OST_100Bills"), "official identifier");
         ExpectEqual(OfficialMapIdentifier("level_Escape"), std::string("OST_Escape"), "legacy prefix stripped");
         ExpectEqual(OfficialSongLevelId("level_Escape"), std::string("Escape"), "yaml official level id");
@@ -212,8 +211,9 @@ namespace {
         Expect(!ParseIdent("nonsense").has_value(), "malformed ident rejected");
         Expect(!ParseIdent("A_Standard_X").has_value(), "non-numeric difficulty rejected");
 
-        LevelIdentity identity{"1A2B", "Standard", 4};
-        ExpectEqual(identity.ToIdent(), std::string("1A2B_Standard_4"), "ident formatting");
+        ExpectEqual(MakeIdent("1A2B", "Standard", 4), std::string("1A2B_Standard_4"), "ident formatting");
+        ExpectEqual(DescribeDifficulty({"Standard", 4}), std::string("Standard Expert+"), "difficulty for players");
+        ExpectEqual(DifficultyName(4), std::string("ExpertPlus"), "difficulty as stored");
     }
 }
 
@@ -272,7 +272,7 @@ namespace {
         Expect(yaml.find("    \"$100 Bills\":\n      levelid: \"100Bills\"\n      difficulty: 4\n      characteristic: Standard\n      is_official: true\n") != std::string::npos, "official song uses hardest Standard difficulty");
         Expect(yaml.find("$100 Bills") < yaml.find("Lawless Only"), "official songs listed first");
         Expect(yaml.find("    \"Zebra \\\"Remix\\\"\":\n      levelid: \"1a2b\"") != std::string::npos, "quotes in names are escaped");
-        Expect(yaml.find("# also available: Standard Expert (3), OneSaber ExpertPlus (4)") != std::string::npos, "other difficulties listed as a comment");
+        Expect(yaml.find("# also available: Standard Expert (3), OneSaber Expert+ (4)") != std::string::npos, "other difficulties listed as a comment");
         Expect(yaml.find("    \"Zebra \\\"Remix\\\" [4d4d]\":") != std::string::npos, "duplicate titles get their key appended");
         Expect(yaml.find("levelid: \"3c3c\"\n      difficulty: 3\n      characteristic: Lawless") != std::string::npos, "falls back to another characteristic");
         Expect(yaml.find("5e5e") == std::string::npos, "songs with no supported difficulty are skipped");

@@ -5,7 +5,6 @@
 #include <sstream>
 #include <string>
 
-#include "archipelago/ApbsArchive.hpp"
 #include "archipelago/BeatSaverKeyCache.hpp"
 #include "archipelago/SavedSession.hpp"
 
@@ -45,38 +44,6 @@ namespace {
         Expect(!reloaded.KeyForHash("000000").has_value(), "unknown hash");
     }
 
-    void TestKeyCacheDropsSharedHashes(std::filesystem::path const& workDirectory) {
-        auto cachePath = (workDirectory / "shared" / "keys.json").string();
-        {
-            BeatSaverKeyCache cache(cachePath);
-            cache.Store("1a2b", {"SAME", "AAA111"});
-            cache.Store("3c4d", {"SAME"});
-            cache.Save();
-        }
-        BeatSaverKeyCache reloaded(cachePath);
-        reloaded.Load();
-        Expect(!reloaded.KeyForHash("SAME").has_value(), "hash claimed by two keys is dropped");
-        Expect(reloaded.HashesForKey("1a2b") == std::vector<std::string>({"AAA111"}), "other hashes of the key are kept");
-        Expect(!reloaded.Contains("3c4d"), "key left without hashes is looked up again");
-    }
-
-    void TestApbsExtraction(std::filesystem::path const& workDirectory) {
-        auto outputDirectory = workDirectory / "Playlists";
-        auto written = ExtractPlaylistsFromApbs(FIXTURE_DIRECTORY "/sample.apbs", outputDirectory.string());
-        Expect(written.size() == 2, "both playlists extracted, readme skipped");
-        Expect(ReadFile(outputDirectory / "AP_Campaign.bplist").find("\"key\":\"1a2b\"") != std::string::npos, "deflated playlist content intact");
-        Expect(ReadFile(outputDirectory / "Stored.bplist") == R"({"playlistTitle":"Stored"})", "stored playlist content intact");
-        Expect(!std::filesystem::exists(outputDirectory / "nested"), "archive folders are flattened");
-
-        bool threw = false;
-        try {
-            ExtractPlaylistsFromApbs(FIXTURE_DIRECTORY "/not-a-zip.apbs", outputDirectory.string());
-        } catch (std::exception const&) {
-            threw = true;
-        }
-        Expect(threw, "invalid archive reported");
-    }
-
     void TestSavedSessionRoundTrip(std::filesystem::path const& workDirectory) {
         auto sessionPath = (workDirectory / "session.json").string();
         Expect(!LoadSavedSession(sessionPath).has_value(), "no session before saving");
@@ -111,8 +78,6 @@ int main() {
     std::filesystem::remove_all(workDirectory);
 
     TestKeyCacheRoundTrip(workDirectory);
-    TestKeyCacheDropsSharedHashes(workDirectory);
-    TestApbsExtraction(workDirectory);
     TestSavedSessionRoundTrip(workDirectory);
 
     std::filesystem::remove_all(workDirectory);

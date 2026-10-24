@@ -1,5 +1,4 @@
 #include "Content/ContentResolver.hpp"
-#include "Content/PlaylistImporter.hpp"
 #include "Content/SeedPlaylists.hpp"
 #include "Hooks/Hooks.hpp"
 #include "Logger.hpp"
@@ -16,7 +15,6 @@ using namespace BeatSaberQuestAP;
 
 namespace {
     modloader::ModInfo modInfo{MOD_ID, VERSION, 0};
-    bool importedInitialPatches = false;
 }
 
 MOD_EXPORT_FUNC void setup(CModInfo* info) {
@@ -51,11 +49,6 @@ MOD_EXPORT_FUNC void late_load() {
 
     SongCore::API::Loading::GetSongsLoadedEvent().addCallback([](auto) {
         BSML::MainThreadScheduler::Schedule([] {
-            if (!importedInitialPatches) {
-                importedInitialPatches = true;
-                PlaylistImporter::RemoveImportedPlaylists();
-                PlaylistImporter::ImportPendingPatches();
-            }
             ContentResolver::Instance().HandleSongsLoaded();
             SeedPlaylists::Sync();
         });

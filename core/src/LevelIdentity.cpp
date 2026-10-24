@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <iterator>
 
 namespace Archipelago {
 
@@ -29,8 +30,26 @@ namespace Archipelago {
         return left.size() == right.size() && StartsWithIgnoreCase(left, right);
     }
 
-    std::string LevelIdentity::ToIdent() const {
-        return mapIdentifier + "_" + characteristic + "_" + std::to_string(difficulty);
+    namespace {
+        constexpr char const* difficultyNames[] = {"Easy", "Normal", "Hard", "Expert", "ExpertPlus"};
+        constexpr char const* difficultyLabels[] = {"Easy", "Normal", "Hard", "Expert", "Expert+"};
+
+        bool IsKnownDifficulty(int difficulty) {
+            return difficulty >= 0 && difficulty < static_cast<int>(std::size(difficultyNames));
+        }
+    }
+
+    std::string DifficultyName(int difficulty) {
+        return IsKnownDifficulty(difficulty) ? difficultyNames[difficulty] : std::to_string(difficulty);
+    }
+
+    std::string DescribeDifficulty(MapDifficulty const& mapDifficulty) {
+        std::string label = IsKnownDifficulty(mapDifficulty.difficulty) ? difficultyLabels[mapDifficulty.difficulty] : std::to_string(mapDifficulty.difficulty);
+        return mapDifficulty.characteristic + " " + label;
+    }
+
+    std::string MakeIdent(std::string_view mapIdentifier, std::string_view characteristic, int difficulty) {
+        return std::string(mapIdentifier) + "_" + std::string(characteristic) + "_" + std::to_string(difficulty);
     }
 
     bool IsCustomLevelId(std::string_view levelId) {
@@ -54,14 +73,6 @@ namespace Archipelago {
 
     std::string OfficialSongLevelId(std::string_view levelId) {
         return OfficialMapIdentifier(levelId).substr(officialIdentPrefix.size());
-    }
-
-    std::string CustomMapIdentifier(std::string_view beatSaverKey) {
-        std::string upper = ToUpper(beatSaverKey);
-        auto firstSignificant = upper.find_first_not_of('0');
-        if (firstSignificant == std::string::npos)
-            return "0";
-        return upper.substr(firstSignificant);
     }
 
     std::optional<ParsedIdent> ParseIdent(std::string_view ident) {

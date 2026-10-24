@@ -23,9 +23,6 @@ namespace Archipelago {
         std::optional<std::string> KeyForHash(std::string const& hash) const;
 
     private:
-        // older builds trusted preset playlists that give every song the same hash
-        void DropHashesSharedByKeys();
-
         std::string cacheFilePath;
         std::map<std::string, std::vector<std::string>> hashesByKey;
         std::map<std::string, std::string> keysByHash;

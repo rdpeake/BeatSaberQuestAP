@@ -36,22 +36,6 @@ namespace Archipelago {
             }
             Store(entry.name.GetString(), hashes);
         }
-        DropHashesSharedByKeys();
-    }
-
-    void BeatSaverKeyCache::DropHashesSharedByKeys() {
-        std::map<std::string, int> keyCountByHash;
-        for (auto const& [beatSaverKey, hashes] : hashesByKey) {
-            for (auto const& hash : hashes)
-                keyCountByHash[hash]++;
-        }
-        for (auto keyEntry = hashesByKey.begin(); keyEntry != hashesByKey.end();) {
-            auto& hashes = keyEntry->second;
-            std::erase_if(hashes, [&](std::string const& hash) { return keyCountByHash[hash] > 1; });
-            // an emptied key must be looked up again
-            keyEntry = hashes.empty() ? hashesByKey.erase(keyEntry) : std::next(keyEntry);
-        }
-        std::erase_if(keysByHash, [&](auto const& entry) { return keyCountByHash[entry.first] > 1; });
     }
 
     bool BeatSaverKeyCache::Save() const {

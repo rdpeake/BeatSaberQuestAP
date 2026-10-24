@@ -43,6 +43,9 @@ namespace Archipelago {
 
     std::optional<uint32_t> FindNodeForIdent(SlotData const& slotData, std::string_view ident);
 
+    // nodes of the seed that use this map, whatever their difficulty
+    std::vector<uint32_t> NodesForMap(SlotData const& slotData, std::string_view mapIdentifier);
+
     // C, B, A, S, SS map to 0-4 (SSS counts as SS); anything below C is -1
     int GradeIndexFromRankName(std::string_view rankName);
 

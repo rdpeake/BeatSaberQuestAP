@@ -109,6 +109,16 @@ namespace Archipelago {
         return std::nullopt;
     }
 
+    std::vector<uint32_t> NodesForMap(SlotData const& slotData, std::string_view mapIdentifier) {
+        std::vector<uint32_t> nodes;
+        for (auto const& [node, ident] : slotData.nodeToIdent) {
+            auto parsed = ParseIdent(ident);
+            if (parsed && EqualsIgnoreCase(parsed->mapIdentifier, mapIdentifier))
+                nodes.push_back(node);
+        }
+        return nodes;
+    }
+
     int GradeIndexFromRankName(std::string_view rankName) {
         constexpr std::string_view grades[] = {"C", "B", "A", "S", "SS"};
         if (rankName == "SSS")
@@ -131,14 +141,13 @@ namespace Archipelago {
         SlotData const& slotData,
         std::function<std::optional<std::string>(int64_t locationId)> const& locationNameForId
     ) {
-        constexpr char const* difficultyNames[] = {"Easy", "Normal", "Hard", "Expert", "ExpertPlus"};
         std::vector<std::string> mismatches;
         for (auto const& [node, ident] : slotData.nodeToIdent) {
             auto parsed = ParseIdent(ident);
             auto songName = slotData.songNames.find(node);
-            if (!parsed || songName == slotData.songNames.end() || parsed->difficulty < 0 || parsed->difficulty > 4)
+            if (!parsed || songName == slotData.songNames.end())
                 continue;
-            std::string expected = songName->second + " (" + difficultyNames[parsed->difficulty] + ")";
+            std::string expected = songName->second + " (" + DifficultyName(parsed->difficulty) + ")";
             for (auto locationId : LocationsForNode(slotData, node)) {
                 auto locationName = locationNameForId(locationId);
                 if (!locationName) {

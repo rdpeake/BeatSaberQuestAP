@@ -7,12 +7,10 @@
 
 #include "archipelago/LevelIdentity.hpp"
 #include "archipelago/SeedPlaylists.hpp"
-#include "bsml/shared/Helpers/getters.hpp"
 #include "Content/ContentResolver.hpp"
+#include "Content/GameLevels.hpp"
 #include "Content/PlaylistIcon.hpp"
 #include "GlobalNamespace/BeatmapLevel.hpp"
-#include "GlobalNamespace/BeatmapLevelsModel.hpp"
-#include "GlobalNamespace/MainFlowCoordinator.hpp"
 #include "Hooks/Hooks.hpp"
 #include "Logger.hpp"
 #include "ModPaths.hpp"
@@ -26,7 +24,6 @@ namespace BeatSaberQuestAP::SeedPlaylists {
     namespace {
         // marks files this mod owns so stale ones can be removed
         constexpr std::string_view filePrefix = "BeatSaberQuestAP_";
-        constexpr char const* difficultyNames[] = {"Easy", "Normal", "Hard", "Expert", "ExpertPlus"};
 
         std::map<std::string, std::string> lastSynced;
         bool synced = false;
@@ -40,17 +37,12 @@ namespace BeatSaberQuestAP::SeedPlaylists {
             int difficulty = 0;
         };
 
-        GlobalNamespace::BeatmapLevelsModel* GetBeatmapLevelsModel() {
-            auto mainFlowCoordinator = BSML::Helpers::GetMainFlowCoordinator();
-            return mainFlowCoordinator ? mainFlowCoordinator->_beatmapLevelsModel : nullptr;
-        }
-
-        std::optional<PlaylistSong> SongForNode(Archipelago::SlotData const& slotData, uint32_t node, GlobalNamespace::BeatmapLevelsModel* levelsModel) {
+        std::optional<PlaylistSong> SongForNode(Archipelago::SlotData const& slotData, uint32_t node) {
             auto ident = slotData.nodeToIdent.find(node);
             if (ident == slotData.nodeToIdent.end())
                 return std::nullopt;
             auto parsed = Archipelago::ParseIdent(ident->second);
-            if (!parsed || parsed->difficulty < 0 || parsed->difficulty > 4)
+            if (!parsed)
                 return std::nullopt;
 
             PlaylistSong song;
@@ -60,30 +52,19 @@ namespace BeatSaberQuestAP::SeedPlaylists {
                 song.songName = name->second;
 
             if (parsed->isOfficial) {
-                GlobalNamespace::BeatmapLevel* level = nullptr;
-                if (levelsModel) {
-                    level = levelsModel->GetBeatmapLevel(parsed->officialLevelId);
-                    if (!level)
-                        level = levelsModel->GetBeatmapLevel("level_" + parsed->officialLevelId);
-                }
+                auto level = GameLevels::FindOfficialLevel(parsed->officialLevelId);
                 song.levelId = level ? static_cast<std::string>(level->levelID) : parsed->officialLevelId;
                 return song;
             }
 
             song.key = parsed->beatSaverKey;
             auto hashes = ContentResolver::Instance().HashesForBeatSaverKey(parsed->beatSaverKey);
-            for (auto const& hash : hashes) {
-                if (SongCore::API::Loading::GetLevelByHash(hash)) {
-                    song.hash = hash;
-                    break;
-                }
-            }
-            // a missing song still gets listed so PlaylistManager can download it
-            if (song.hash.empty() && !hashes.empty())
-                song.hash = hashes.back();
-            if (song.hash.empty())
+            if (hashes.empty())
                 return std::nullopt;
-            song.levelId = "custom_level_" + song.hash;
+            // a missing song still gets listed so PlaylistManager can download it
+            auto installed = GameLevels::FindInstalledCustomLevel(hashes);
+            song.levelId = installed ? static_cast<std::string>(installed->levelID) : std::string(Archipelago::customLevelPrefix) + hashes.back();
+            song.hash = Archipelago::HashFromCustomLevelId(song.levelId);
             return song;
         }
 
@@ -121,7 +102,7 @@ namespace BeatSaberQuestAP::SeedPlaylists {
                 writer.Key("characteristic");
                 writer.String(song.characteristic);
                 writer.Key("name");
-                writer.String(difficultyNames[song.difficulty]);
+                writer.String(Archipelago::DifficultyName(song.difficulty));
                 writer.EndObject();
                 writer.EndArray();
                 writer.EndObject();
@@ -137,11 +118,10 @@ namespace BeatSaberQuestAP::SeedPlaylists {
             auto const& slotData = session.GetSlotData();
             if (!session.IsInArchipelagoMode() || !slotData)
                 return playlists;
-            auto levelsModel = GetBeatmapLevelsModel();
             for (auto const& group : Archipelago::GroupSeedNodes(*slotData)) {
                 std::vector<PlaylistSong> songs;
                 for (auto node : group.nodes) {
-                    if (auto song = SongForNode(*slotData, node, levelsModel))
+                    if (auto song = SongForNode(*slotData, node))
                         songs.push_back(std::move(*song));
                 }
                 if (!songs.empty())

@@ -31,5 +31,4 @@ add_test(NAME client_tests COMMAND client_tests)
 
 add_executable(storage_tests storage_tests.cpp)
 target_link_libraries(storage_tests PRIVATE archipelago_core)
-target_compile_definitions(storage_tests PRIVATE FIXTURE_DIRECTORY="${CMAKE_CURRENT_LIST_DIR}/fixtures")
 add_test(NAME storage_tests COMMAND storage_tests)

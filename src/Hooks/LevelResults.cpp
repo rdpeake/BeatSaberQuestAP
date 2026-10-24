@@ -5,7 +5,6 @@
 #include "GlobalNamespace/BeatmapLevel.hpp"
 #include "GlobalNamespace/GameplayModifiers.hpp"
 #include "GlobalNamespace/LevelCompletionResults.hpp"
-#include "GlobalNamespace/MenuTransitionsHelper.hpp"
 #include "GlobalNamespace/PracticeSettings.hpp"
 #include "GlobalNamespace/RankModel.hpp"
 #include "GlobalNamespace/StandardLevelScenesTransitionSetupDataSO.hpp"
@@ -17,9 +16,6 @@
 using namespace GlobalNamespace;
 
 namespace {
-    // both hooks below can report the same result; handle each one once
-    LevelCompletionResults* lastHandledResults = nullptr;
-
     // practice settings may be attached to normal plays, so only a changed start or speed counts as practice
     bool IsRealPractice(PracticeSettings* practiceSettings) {
         if (!practiceSettings)
@@ -28,9 +24,8 @@ namespace {
     }
 
     void ReportFinishedLevel(StandardLevelScenesTransitionSetupDataSO* setupData, LevelCompletionResults* results) {
-        if (!setupData || !results || results == lastHandledResults)
+        if (!setupData || !results)
             return;
-        lastHandledResults = results;
 
         BeatmapKey beatmapKey = setupData->beatmapKey;
         if (!beatmapKey.beatmapCharacteristic) {
@@ -67,21 +62,8 @@ MAKE_HOOK_MATCH(
     ReportFinishedLevel(self, results);
 }
 
-MAKE_HOOK_MATCH(
-    MenuTransitionsHelper_HandleMainGameSceneDidFinish,
-    &MenuTransitionsHelper::HandleMainGameSceneDidFinish,
-    void,
-    MenuTransitionsHelper* self,
-    StandardLevelScenesTransitionSetupDataSO* setupData,
-    LevelCompletionResults* results
-) {
-    MenuTransitionsHelper_HandleMainGameSceneDidFinish(self, setupData, results);
-    ReportFinishedLevel(setupData, results);
-}
-
 namespace BeatSaberQuestAP::Hooks {
     void InstallLevelResults() {
         INSTALL_HOOK(logger, StandardLevelScenesTransitionSetupDataSO_Finish);
-        INSTALL_HOOK(logger, MenuTransitionsHelper_HandleMainGameSceneDidFinish);
     }
 }

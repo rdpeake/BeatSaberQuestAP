@@ -9,11 +9,10 @@
 namespace Archipelago {
 
     namespace {
-        constexpr char const* difficultyNames[] = {"Easy", "Normal", "Hard", "Expert", "ExpertPlus"};
         // characteristics the apworld's Songs schema accepts
         constexpr char const* supportedCharacteristics[] = {"Standard", "OneSaber", "NoArrows", "90Degree", "360Degree", "Lightshow", "Lawless"};
 
-        bool IsSupported(ExportedDifficulty const& difficulty) {
+        bool IsSupported(MapDifficulty const& difficulty) {
             bool knownCharacteristic = std::any_of(std::begin(supportedCharacteristics), std::end(supportedCharacteristics), [&](char const* name) {
                 return difficulty.characteristic == name;
             });
@@ -39,13 +38,13 @@ namespace Archipelago {
             return text.substr(first, text.find_last_not_of(" \t") - first + 1);
         }
 
-        std::string DescribeDifficulty(ExportedDifficulty const& difficulty) {
-            return difficulty.characteristic + " " + difficultyNames[difficulty.difficulty] + " (" + std::to_string(difficulty.difficulty) + ")";
+        std::string DescribeWithNumber(MapDifficulty const& difficulty) {
+            return DescribeDifficulty(difficulty) + " (" + std::to_string(difficulty.difficulty) + ")";
         }
     }
 
-    ExportedDifficulty ChooseExportDifficulty(std::vector<ExportedDifficulty> const& difficulties) {
-        ExportedDifficulty chosen;
+    MapDifficulty ChooseExportDifficulty(std::vector<MapDifficulty> const& difficulties) {
+        MapDifficulty chosen;
         bool found = false;
         for (auto const& candidate : difficulties) {
             if (!IsSupported(candidate) || candidate.characteristic != "Standard")
@@ -87,7 +86,7 @@ namespace Archipelago {
 
         std::set<std::string> usedNames;
         for (auto const& song : songs) {
-            std::vector<ExportedDifficulty> usable;
+            std::vector<MapDifficulty> usable;
             std::copy_if(song.difficulties.begin(), song.difficulties.end(), std::back_inserter(usable), IsSupported);
             if (usable.empty() || song.levelId.empty())
                 continue;
@@ -111,7 +110,7 @@ namespace Archipelago {
                 for (auto const& difficulty : usable) {
                     if (difficulty.characteristic == chosen.characteristic && difficulty.difficulty == chosen.difficulty)
                         continue;
-                    yaml << (first ? " " : ", ") << DescribeDifficulty(difficulty);
+                    yaml << (first ? " " : ", ") << DescribeWithNumber(difficulty);
                     first = false;
                 }
                 yaml << "\n";

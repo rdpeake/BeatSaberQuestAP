@@ -9,15 +9,22 @@ namespace Archipelago {
     inline constexpr std::string_view customLevelPrefix = "custom_level_";
     inline constexpr std::string_view officialIdentPrefix = "OST_";
 
-    // ident format shared with the PC client and the apworld: <map>_<characteristic>_<difficulty>
-    // where <map> is the uppercase BeatSaver id for custom levels or OST_<levelId> for official ones
-    struct LevelIdentity {
-        std::string mapIdentifier;
+    struct MapDifficulty {
         std::string characteristic;
+        // 0 Easy to 4 Expert+
         int difficulty = 0;
 
-        std::string ToIdent() const;
+        bool operator==(MapDifficulty const&) const = default;
     };
+
+    // as maps and playlists store it, e.g. "ExpertPlus"
+    std::string DifficultyName(int difficulty);
+    // for players, e.g. "Standard Expert+"
+    std::string DescribeDifficulty(MapDifficulty const& mapDifficulty);
+
+    // ident format shared with the PC client and the apworld: <map>_<characteristic>_<difficulty>
+    // where <map> is the BeatSaver key for custom levels or OST_<levelId> for official ones; compared ignoring case
+    std::string MakeIdent(std::string_view mapIdentifier, std::string_view characteristic, int difficulty);
 
     bool IsCustomLevelId(std::string_view levelId);
 
@@ -27,9 +34,6 @@ namespace Archipelago {
     std::string OfficialMapIdentifier(std::string_view levelId);
     // the form a YAML `songs:` entry uses, e.g. "100Bills"
     std::string OfficialSongLevelId(std::string_view levelId);
-
-    // BeatSaver keys are lowercase hex; the PC client formats them as uppercase without leading zeros
-    std::string CustomMapIdentifier(std::string_view beatSaverKey);
 
     struct ParsedIdent {
         bool isOfficial = false;

@@ -1,5 +1,5 @@
 #include "Content/ContentResolver.hpp"
-#include "Content/LevelDifficulties.hpp"
+#include "Content/GameLevels.hpp"
 
 #include <algorithm>
 #include <iterator>
@@ -34,58 +34,26 @@
 namespace BeatSaberQuestAP {
 
     namespace {
-        constexpr char const* difficultyNames[] = {"Easy", "Normal", "Hard", "Expert", "Expert+"};
-
-        std::string DescribeDifficulty(Archipelago::ParsedIdent const& ident) {
-            bool knownDifficulty = ident.difficulty >= 0 && ident.difficulty < static_cast<int>(std::size(difficultyNames));
-            return ident.characteristic + " " + (knownDifficulty ? difficultyNames[ident.difficulty] : std::to_string(ident.difficulty));
-        }
-
         std::string DescribeAvailableDifficulties(GlobalNamespace::BeatmapLevel* level) {
             std::string available;
-            try {
-                for (auto const& [characteristicName, levelDifficulty] : ListLevelDifficulties(level)) {
-                    bool knownDifficulty = levelDifficulty >= 0 && levelDifficulty < static_cast<int>(std::size(difficultyNames));
-                    available += (available.empty() ? "" : ", ") + characteristicName + " " + (knownDifficulty ? difficultyNames[levelDifficulty] : std::to_string(levelDifficulty));
-                }
-            } catch (std::exception const&) {
-            }
+            for (auto const& difficulty : GameLevels::ListDifficulties(level))
+                available += (available.empty() ? "" : ", ") + Archipelago::DescribeDifficulty(difficulty);
             return available.empty() ? "none found" : available;
         }
 
-        bool LevelHasDifficulty(GlobalNamespace::BeatmapLevel* level, std::string_view characteristic, int difficulty) {
-            std::vector<std::pair<std::string, int>> difficulties;
-            try {
-                difficulties = ListLevelDifficulties(level);
-            } catch (std::exception const& error) {
-                logger.warn("Could not list difficulties of {}: {}", static_cast<std::string>(level->levelID), error.what());
-                return true;
-            }
-            // nothing listed means the probe failed, not that the map is empty
+        bool LevelHasDifficulty(GlobalNamespace::BeatmapLevel* level, Archipelago::ParsedIdent const& ident) {
+            auto difficulties = GameLevels::ListDifficulties(level);
+            // nothing listed means the lookup failed, not that the map is empty
             if (difficulties.empty())
                 return true;
-            for (auto const& [characteristicName, levelDifficulty] : difficulties) {
-                if (levelDifficulty == difficulty && Archipelago::EqualsIgnoreCase(characteristicName, characteristic))
-                    return true;
-            }
-            std::string available;
-            for (auto const& [characteristicName, levelDifficulty] : difficulties)
-                available += (available.empty() ? "" : ", ") + characteristicName + "/" + std::to_string(levelDifficulty);
-            logger.info("{} lacks {}/{}; it has: {}", static_cast<std::string>(level->levelID), characteristic, difficulty, available.empty() ? "nothing" : available);
-            return false;
+            return std::any_of(difficulties.begin(), difficulties.end(), [&](auto const& difficulty) {
+                return difficulty.difficulty == ident.difficulty && Archipelago::EqualsIgnoreCase(difficulty.characteristic, ident.characteristic);
+            });
         }
 
-        GlobalNamespace::BeatmapLevelsModel* GetBeatmapLevelsModel() {
-            if (!Hooks::IsMainMenuReady())
-                return nullptr;
-            auto mainFlowCoordinator = BSML::Helpers::GetMainFlowCoordinator();
-            return mainFlowCoordinator ? mainFlowCoordinator->_beatmapLevelsModel : nullptr;
-        }
-
-        GlobalNamespace::BeatmapLevel* FindOfficialLevel(GlobalNamespace::BeatmapLevelsModel* levelsModel, std::string const& levelId) {
-            if (auto level = levelsModel->GetBeatmapLevel(levelId))
-                return level;
-            return levelsModel->GetBeatmapLevel("level_" + levelId);
+        std::string MissingDifficultyMessage(GlobalNamespace::BeatmapLevel* level, Archipelago::ParsedIdent const& ident) {
+            return static_cast<std::string>(level->songName) + " has no " + Archipelago::DescribeDifficulty({ident.characteristic, ident.difficulty})
+                + " (has " + DescribeAvailableDifficulties(level) + ")";
         }
 
         // BeatSaver requests block, so they run off the main thread
@@ -101,14 +69,6 @@ namespace BeatSaberQuestAP {
             for (auto const& version : response.responseData->Versions)
                 hashes.push_back(version.Hash);
             return hashes;
-        }
-
-        GlobalNamespace::BeatmapLevel* FindInstalledCustomLevel(std::vector<std::string> const& hashes) {
-            for (auto const& hash : hashes) {
-                if (auto level = SongCore::API::Loading::GetLevelByHash(hash))
-                    return level;
-            }
-            return nullptr;
         }
     }
 
@@ -191,10 +151,7 @@ namespace BeatSaberQuestAP {
     std::optional<std::string> ContentResolver::MapIdentifierForLevelId(std::string_view levelId) const {
         if (!Archipelago::IsCustomLevelId(levelId))
             return Archipelago::OfficialMapIdentifier(levelId);
-        auto key = keyCache.KeyForHash(Archipelago::HashFromCustomLevelId(levelId));
-        if (!key)
-            return std::nullopt;
-        return Archipelago::CustomMapIdentifier(*key);
+        return keyCache.KeyForHash(Archipelago::HashFromCustomLevelId(levelId));
     }
 
     ContentReport const& ContentResolver::GetReport() const {
@@ -264,7 +221,7 @@ namespace BeatSaberQuestAP {
         }
         waitingForSongs = false;
 
-        auto levelsModel = GetBeatmapLevelsModel();
+        auto levelsModel = GameLevels::GetBeatmapLevelsModel();
         std::set<std::string> requiredMaps;
         std::set<std::string> unplayableMaps;
         std::set<std::string> downloadableKeys;
@@ -275,19 +232,14 @@ namespace BeatSaberQuestAP {
             requiredMaps.insert(ident.mapIdentifier);
 
             if (ident.isOfficial) {
-                GlobalNamespace::BeatmapLevel* level = nullptr;
-                try {
-                    level = levelsModel ? FindOfficialLevel(levelsModel, ident.officialLevelId) : nullptr;
-                } catch (std::exception const& error) {
-                    logger.warn("Official level lookup failed for {}: {}", ident.officialLevelId, error.what());
-                }
+                auto level = GameLevels::FindOfficialLevel(ident.officialLevelId);
                 if (!level) {
                     unplayableMaps.insert(ident.mapIdentifier);
                     unavailable.push_back("Official song '" + ident.officialLevelId + "' is not in this game version");
                     continue;
                 }
-                if (!LevelHasDifficulty(level, ident.characteristic, ident.difficulty)) {
-                    unavailable.push_back(static_cast<std::string>(level->songName) + " has no " + DescribeDifficulty(ident) + " (has " + DescribeAvailableDifficulties(level) + ")");
+                if (!LevelHasDifficulty(level, ident)) {
+                    unavailable.push_back(MissingDifficultyMessage(level, ident));
                     continue;
                 }
                 if (std::find(officialLevelIds.begin(), officialLevelIds.end(), static_cast<std::string>(level->levelID)) == officialLevelIds.end())
@@ -300,15 +252,15 @@ namespace BeatSaberQuestAP {
                 unavailable.push_back("BeatSaver map " + ident.beatSaverKey + " could not be looked up; it will be retried when online");
                 continue;
             }
-            auto level = FindInstalledCustomLevel(keyCache.HashesForKey(ident.beatSaverKey));
+            auto level = GameLevels::FindInstalledCustomLevel(keyCache.HashesForKey(ident.beatSaverKey));
             if (!level) {
                 unplayableMaps.insert(ident.mapIdentifier);
                 downloadableKeys.insert(ident.beatSaverKey);
                 continue;
             }
-            if (!LevelHasDifficulty(level, ident.characteristic, ident.difficulty)) {
+            if (!LevelHasDifficulty(level, ident)) {
                 if (keysAlreadyRedownloaded.contains(ident.beatSaverKey))
-                    unavailable.push_back(static_cast<std::string>(level->songName) + " (" + ident.beatSaverKey + ") has no " + DescribeDifficulty(ident) + " (has " + DescribeAvailableDifficulties(level) + ")");
+                    unavailable.push_back(MissingDifficultyMessage(level, ident));
                 else
                     downloadableKeys.insert(ident.beatSaverKey);
             }
