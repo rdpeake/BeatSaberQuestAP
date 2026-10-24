@@ -1,0 +1,61 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "dev/**"
+  pull_request:
+
+env:
+  module_id: beatsaberquestap
+  qmod_name: BeatSaberQuestAP
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Build and run core tests
+        run: |
+          cmake -G Ninja -S tests -B build-tests -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build-tests
+          ctest --test-dir build-tests --output-on-failure
+
+  quest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Point the build at the runner's NDK
+        run: echo "$ANDROID_NDK_LATEST_HOME" > ${GITHUB_WORKSPACE}/ndkpath.txt
+
+      - name: Restore qpm dependencies
+        uses: Fernthedev/qpm-action@v1
+        with:
+          workflow_token: ${{ secrets.GITHUB_TOKEN }}
+          restore: true
+          cache: true
+
+      - name: Build and package qmod
+        run: qpm s qmod
+
+      - name: Upload qmod
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.qmod_name }}.qmod
+          path: ./${{ env.qmod_name }}.qmod
+          if-no-files-found: error
+
+      - name: Upload unstripped library for crash logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug_lib${{ env.module_id }}.so
+          path: ./build/debug/lib${{ env.module_id }}.so
+          if-no-files-found: error

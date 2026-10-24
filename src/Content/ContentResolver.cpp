@@ -1,0 +1,346 @@
+#include "Content/ContentResolver.hpp"
+
+#include <algorithm>
+#include <iterator>
+
+#include "BeatSaverAPI.hpp"
+#include "GlobalNamespace/BeatmapCharacteristicSO.hpp"
+#include "GlobalNamespace/BeatmapKey.hpp"
+#include "GlobalNamespace/BeatmapLevel.hpp"
+#include "GlobalNamespace/BeatmapLevelPack.hpp"
+#include "GlobalNamespace/BeatmapLevelsModel.hpp"
+#include "GlobalNamespace/EntitlementStatus.hpp"
+#include "GlobalNamespace/IAdditionalContentModel.hpp"
+#include "GlobalNamespace/IEntitlementModel.hpp"
+#include "GlobalNamespace/MainFlowCoordinator.hpp"
+#include "GlobalNamespace/OpenProductStoreResult.hpp"
+#include "Logger.hpp"
+#include "ModPaths.hpp"
+#include "Session.hpp"
+#include "System/Collections/Generic/IEnumerable_1.hpp"
+#include "System/Collections/Generic/IEnumerator_1.hpp"
+#include "System/Collections/IEnumerator.hpp"
+#include "System/Threading/CancellationToken.hpp"
+#include "System/Threading/Tasks/Task_1.hpp"
+#include "beatsaber-hook/shared/utils/typedefs-wrappers.hpp"
+#include "bsml/shared/BSML/MainThreadScheduler.hpp"
+#include "bsml/shared/Helpers/getters.hpp"
+#include "songcore/shared/SongCore.hpp"
+
+namespace BeatSaberQuestAP {
+
+    namespace {
+        constexpr char const* difficultyNames[] = {"Easy", "Normal", "Hard", "Expert", "Expert+"};
+
+        std::string DescribeDifficulty(Archipelago::ParsedIdent const& ident) {
+            bool knownDifficulty = ident.difficulty >= 0 && ident.difficulty < static_cast<int>(std::size(difficultyNames));
+            return ident.characteristic + " " + (knownDifficulty ? difficultyNames[ident.difficulty] : std::to_string(ident.difficulty));
+        }
+
+        bool LevelHasDifficulty(GlobalNamespace::BeatmapLevel* level, std::string_view characteristic, int difficulty) {
+            auto enumerator = level->GetBeatmapKeys()->GetEnumerator();
+            while (enumerator->i___System__Collections__IEnumerator()->MoveNext()) {
+                GlobalNamespace::BeatmapKey key = enumerator->Current;
+                if (!key.beatmapCharacteristic || static_cast<int>(key.difficulty) != difficulty)
+                    continue;
+                if (Archipelago::EqualsIgnoreCase(static_cast<std::string>(key.beatmapCharacteristic->serializedName), characteristic))
+                    return true;
+            }
+            return false;
+        }
+
+        GlobalNamespace::BeatmapLevelsModel* GetBeatmapLevelsModel() {
+            auto mainFlowCoordinator = BSML::Helpers::GetMainFlowCoordinator();
+            return mainFlowCoordinator ? mainFlowCoordinator->_beatmapLevelsModel : nullptr;
+        }
+
+        GlobalNamespace::BeatmapLevel* FindOfficialLevel(GlobalNamespace::BeatmapLevelsModel* levelsModel, std::string const& levelId) {
+            if (auto level = levelsModel->GetBeatmapLevel(levelId))
+                return level;
+            return levelsModel->GetBeatmapLevel("level_" + levelId);
+        }
+
+        GlobalNamespace::BeatmapLevel* FindInstalledCustomLevel(std::vector<std::string> const& hashes) {
+            for (auto const& hash : hashes) {
+                if (auto level = SongCore::API::Loading::GetLevelByHash(hash))
+                    return level;
+            }
+            return nullptr;
+        }
+    }
+
+    ContentResolver& ContentResolver::Instance() {
+        static ContentResolver instance;
+        return instance;
+    }
+
+    ContentResolver::ContentResolver() : keyCache(ModPaths::BeatSaverKeyCacheFile()) {
+        keyCache.Load();
+    }
+
+    void ContentResolver::Reset() {
+        generation++;
+        active = false;
+        waitingForSongs = false;
+        requiredIdents.clear();
+        keysToResolve.clear();
+        keysUnknownToBeatSaver.clear();
+        keysAlreadyRedownloaded.clear();
+        downloadQueue.clear();
+        report = {};
+    }
+
+    void ContentResolver::Begin(Archipelago::SlotData const& slotData) {
+        Reset();
+        active = true;
+
+        std::set<std::string> uniqueKeys;
+        for (auto const& [node, ident] : slotData.nodeToIdent) {
+            auto parsed = Archipelago::ParseIdent(ident);
+            if (!parsed) {
+                report.unavailableDescriptions.push_back("Unrecognised song entry " + ident);
+                continue;
+            }
+            if (!parsed->isOfficial && !keyCache.Contains(parsed->beatSaverKey) && uniqueKeys.insert(parsed->beatSaverKey).second)
+                keysToResolve.push_back(parsed->beatSaverKey);
+            requiredIdents.push_back(std::move(*parsed));
+        }
+
+        report.checking = true;
+        if (!keysToResolve.empty()) {
+            report.progressText = "Looking up " + std::to_string(keysToResolve.size()) + " song(s) on BeatSaver...";
+            Publish();
+            ResolveNextUnknownKey();
+            return;
+        }
+        Evaluate();
+    }
+
+    std::optional<std::string> ContentResolver::MapIdentifierForLevelId(std::string_view levelId) const {
+        if (!Archipelago::IsCustomLevelId(levelId))
+            return Archipelago::OfficialMapIdentifier(levelId);
+        auto key = keyCache.KeyForHash(Archipelago::HashFromCustomLevelId(levelId));
+        if (!key)
+            return std::nullopt;
+        return Archipelago::CustomMapIdentifier(*key);
+    }
+
+    ContentReport const& ContentResolver::GetReport() const {
+        return report;
+    }
+
+    void ContentResolver::ResolveNextUnknownKey() {
+        if (keysToResolve.empty()) {
+            keyCache.Save();
+            Evaluate();
+            return;
+        }
+
+        std::string key = keysToResolve.back();
+        keysToResolve.pop_back();
+        int requestGeneration = generation;
+        BeatSaver::API::GetBeatmapByKeyAsync(key, [this, key, requestGeneration](std::optional<BeatSaver::Beatmap> beatmap) {
+            std::vector<std::string> hashes;
+            if (beatmap) {
+                for (auto const& version : beatmap->GetVersions())
+                    hashes.push_back(version.GetHash());
+            }
+            BSML::MainThreadScheduler::Schedule([this, key, requestGeneration, hashes = std::move(hashes)] {
+                if (requestGeneration != generation)
+                    return;
+                if (hashes.empty()) {
+                    logger.warn("BeatSaver lookup failed for {}", key);
+                    keysUnknownToBeatSaver.insert(key);
+                } else {
+                    keyCache.Store(key, hashes);
+                }
+                ResolveNextUnknownKey();
+            });
+        });
+    }
+
+    void ContentResolver::HandleSongsLoaded() {
+        if (!active || report.downloading)
+            return;
+        if (waitingForSongs || !report.checking)
+            Evaluate();
+    }
+
+    void ContentResolver::Evaluate() {
+        if (!active)
+            return;
+        if (!SongCore::API::Loading::AreSongsLoaded() || SongCore::API::Loading::AreSongsRefreshing()) {
+            waitingForSongs = true;
+            report.checking = true;
+            report.progressText = "Waiting for songs to finish loading...";
+            Publish();
+            return;
+        }
+        waitingForSongs = false;
+
+        auto levelsModel = GetBeatmapLevelsModel();
+        std::set<std::string> requiredMaps;
+        std::set<std::string> unplayableMaps;
+        std::set<std::string> downloadableKeys;
+        std::vector<std::string> unavailable;
+        std::vector<std::string> officialLevelIds;
+
+        for (auto const& ident : requiredIdents) {
+            requiredMaps.insert(ident.mapIdentifier);
+
+            if (ident.isOfficial) {
+                auto level = levelsModel ? FindOfficialLevel(levelsModel, ident.officialLevelId) : nullptr;
+                if (!level) {
+                    unplayableMaps.insert(ident.mapIdentifier);
+                    unavailable.push_back("Official song '" + ident.officialLevelId + "' is not in this game version");
+                    continue;
+                }
+                if (!LevelHasDifficulty(level, ident.characteristic, ident.difficulty)) {
+                    unavailable.push_back(static_cast<std::string>(level->songName) + " has no " + DescribeDifficulty(ident));
+                    continue;
+                }
+                if (std::find(officialLevelIds.begin(), officialLevelIds.end(), static_cast<std::string>(level->levelID)) == officialLevelIds.end())
+                    officialLevelIds.push_back(level->levelID);
+                continue;
+            }
+
+            if (keysUnknownToBeatSaver.contains(ident.beatSaverKey)) {
+                unplayableMaps.insert(ident.mapIdentifier);
+                unavailable.push_back("BeatSaver map " + ident.beatSaverKey + " could not be looked up");
+                continue;
+            }
+            auto level = FindInstalledCustomLevel(keyCache.HashesForKey(ident.beatSaverKey));
+            if (!level) {
+                unplayableMaps.insert(ident.mapIdentifier);
+                downloadableKeys.insert(ident.beatSaverKey);
+                continue;
+            }
+            if (!LevelHasDifficulty(level, ident.characteristic, ident.difficulty)) {
+                if (keysAlreadyRedownloaded.contains(ident.beatSaverKey))
+                    unavailable.push_back("BeatSaver map " + ident.beatSaverKey + " has no " + DescribeDifficulty(ident));
+                else
+                    downloadableKeys.insert(ident.beatSaverKey);
+            }
+        }
+
+        std::sort(unavailable.begin(), unavailable.end());
+        unavailable.erase(std::unique(unavailable.begin(), unavailable.end()), unavailable.end());
+
+        report.requiredMapCount = static_cast<int>(requiredMaps.size());
+        report.playableMapCount = static_cast<int>(requiredMaps.size() - unplayableMaps.size());
+        report.downloadableKeys.assign(downloadableKeys.begin(), downloadableKeys.end());
+        report.unavailableDescriptions = std::move(unavailable);
+        report.missingPacks.clear();
+
+        if (officialLevelIds.empty() || !levelsModel) {
+            report.checking = false;
+            report.progressText.clear();
+            Publish();
+            return;
+        }
+
+        report.progressText = "Checking DLC ownership...";
+        Publish();
+
+        auto pendingChecks = std::make_shared<int>(static_cast<int>(officialLevelIds.size()));
+        auto packsByLevel = std::make_shared<std::map<std::string, MissingDlcPack>>();
+        int checkGeneration = generation;
+        for (auto const& levelId : officialLevelIds) {
+            auto task = SafePtr(levelsModel->entitlements->GetLevelEntitlementStatusAsync(levelId, System::Threading::CancellationToken::get_None()));
+            BSML::MainThreadScheduler::ScheduleUntil(
+                [task] { return task->IsCompleted; },
+                [this, task, levelId, levelsModel, pendingChecks, packsByLevel, checkGeneration] {
+                    if (checkGeneration != generation)
+                        return;
+                    bool notOwned = !task->IsFaulted && task->Result == GlobalNamespace::EntitlementStatus::NotOwned;
+                    if (notOwned) {
+                        auto pack = levelsModel->GetLevelPackForLevelId(levelId);
+                        std::string packId = pack ? static_cast<std::string>(pack->packID) : levelId;
+                        auto& missingPack = (*packsByLevel)[packId];
+                        missingPack.packId = packId;
+                        missingPack.packName = pack ? static_cast<std::string>(pack->packName) : levelId;
+                        missingPack.requiredDifficulties++;
+                    }
+                    if (--*pendingChecks > 0)
+                        return;
+                    for (auto& [packId, missingPack] : *packsByLevel)
+                        report.missingPacks.push_back(missingPack);
+                    report.checking = false;
+                    report.progressText.clear();
+                    Publish();
+                }
+            );
+        }
+    }
+
+    void ContentResolver::DownloadMissingSongs() {
+        if (!active || report.downloading || report.downloadableKeys.empty())
+            return;
+        downloadQueue = report.downloadableKeys;
+        report.downloading = true;
+        report.downloadsFinished = 0;
+        report.downloadsTotal = static_cast<int>(downloadQueue.size());
+        Publish();
+        DownloadNextSong();
+    }
+
+    void ContentResolver::DownloadNextSong() {
+        if (downloadQueue.empty()) {
+            FinishDownloads();
+            return;
+        }
+
+        std::string key = downloadQueue.back();
+        downloadQueue.pop_back();
+        keysAlreadyRedownloaded.insert(key);
+        int requestGeneration = generation;
+
+        auto finishOne = [this, key, requestGeneration](bool succeeded) {
+            BSML::MainThreadScheduler::Schedule([this, key, requestGeneration, succeeded] {
+                if (requestGeneration != generation)
+                    return;
+                if (!succeeded)
+                    logger.warn("Download failed for {}", key);
+                report.downloadsFinished++;
+                Publish();
+                DownloadNextSong();
+            });
+        };
+
+        BeatSaver::API::GetBeatmapByKeyAsync(key, [this, key, finishOne](std::optional<BeatSaver::Beatmap> beatmap) {
+            if (!beatmap || beatmap->GetVersions().empty()) {
+                finishOne(false);
+                return;
+            }
+            std::vector<std::string> hashes;
+            for (auto const& version : beatmap->GetVersions())
+                hashes.push_back(version.GetHash());
+            BSML::MainThreadScheduler::Schedule([this, key, hashes] { keyCache.Store(key, hashes); });
+            BeatSaver::API::DownloadBeatmapAsync(*beatmap, [finishOne](bool error) { finishOne(!error); });
+        });
+    }
+
+    void ContentResolver::FinishDownloads() {
+        keyCache.Save();
+        report.downloading = false;
+        report.checking = true;
+        report.progressText = "Loading downloaded songs...";
+        waitingForSongs = true;
+        Publish();
+        SongCore::API::Loading::RefreshSongs(false);
+    }
+
+    void ContentResolver::OpenStoreForPack(std::string const& packId) {
+        auto mainFlowCoordinator = BSML::Helpers::GetMainFlowCoordinator();
+        if (!mainFlowCoordinator || !mainFlowCoordinator->_additionalContentModel) {
+            logger.warn("Store is not available right now");
+            return;
+        }
+        logger.info("Opening store page for pack {}", packId);
+        mainFlowCoordinator->_additionalContentModel->OpenLevelPackProductStoreAsync(packId, System::Threading::CancellationToken::get_None());
+    }
+
+    void ContentResolver::Publish() {
+        Session::Instance().NotifyChanged();
+    }
+}
