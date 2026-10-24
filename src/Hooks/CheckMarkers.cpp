@@ -7,6 +7,7 @@
 #include "beatsaber-hook/shared/utils/hooking.hpp"
 
 using namespace GlobalNamespace;
+using BeatSaberQuestAP::logger;
 
 namespace {
     std::string ProgressTag(BeatSaberQuestAP::CheckProgress const& progress) {
