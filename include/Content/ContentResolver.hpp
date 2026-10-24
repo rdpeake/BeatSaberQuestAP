@@ -60,6 +60,7 @@ namespace BeatSaberQuestAP {
     private:
         ContentResolver();
         void ResolveNextUnknownKey();
+        void WaitForSongsThenEvaluate();
         void Evaluate();
         void EvaluateOfficialEntitlements();
         void DownloadNextSong();

@@ -16,6 +16,7 @@
 #include "UnityEngine/Object.hpp"
 #include "UnityEngine/Transform.hpp"
 #include "UnityEngine/UI/Button.hpp"
+#include "UnityEngine/RectTransform.hpp"
 #include "UnityEngine/UI/LayoutElement.hpp"
 #include "UnityEngine/UI/VerticalLayoutGroup.hpp"
 #include "TMPro/TextAlignmentOptions.hpp"
@@ -88,8 +89,13 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
                 lineCount += std::max(1, (visibleCharacters + charactersPerLine - 1) / charactersPerLine);
                 lineStart = lineEnd + 1;
             }
-            if (auto layout = textComponent->GetComponent<UnityEngine::UI::LayoutElement*>())
-                layout->preferredHeight = lineCount * fontSize * 1.25f;
+            // the settings container sizes children by their rect, so set it as well as the layout hint
+            float height = lineCount * fontSize * 1.25f;
+            textComponent->rectTransform->sizeDelta = {textWidth, height};
+            if (auto layout = textComponent->GetComponent<UnityEngine::UI::LayoutElement*>()) {
+                layout->minHeight = height;
+                layout->preferredHeight = height;
+            }
         }
 
         // the game's own keyboard has no symbols, so host names and IPs need BSML's full keyboard

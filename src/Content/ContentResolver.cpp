@@ -197,18 +197,35 @@ namespace BeatSaberQuestAP {
     void ContentResolver::HandleSongsLoaded() {
         if (!active || report.downloading)
             return;
-        if (waitingForSongs || !report.checking)
+        if (!waitingForSongs && !report.checking)
             Evaluate();
+    }
+
+    // SongCore can still report a refresh while its loaded event runs, so poll rather than rely on the event
+    void ContentResolver::WaitForSongsThenEvaluate() {
+        if (waitingForSongs)
+            return;
+        waitingForSongs = true;
+        int waitGeneration = generation;
+        BSML::MainThreadScheduler::ScheduleUntil(
+            [] { return SongCore::API::Loading::AreSongsLoaded() && !SongCore::API::Loading::AreSongsRefreshing(); },
+            [this, waitGeneration] {
+                if (waitGeneration != generation || !waitingForSongs)
+                    return;
+                waitingForSongs = false;
+                Evaluate();
+            }
+        );
     }
 
     void ContentResolver::Evaluate() {
         if (!active)
             return;
         if (!SongCore::API::Loading::AreSongsLoaded() || SongCore::API::Loading::AreSongsRefreshing()) {
-            waitingForSongs = true;
             report.checking = true;
             report.progressText = "Waiting for songs to finish loading...";
             Publish();
+            WaitForSongsThenEvaluate();
             return;
         }
         waitingForSongs = false;
@@ -359,9 +376,9 @@ namespace BeatSaberQuestAP {
         report.downloading = false;
         report.checking = true;
         report.progressText = "Loading downloaded songs...";
-        waitingForSongs = true;
         Publish();
         SongCore::API::Loading::RefreshSongs(false);
+        WaitForSongsThenEvaluate();
     }
 
     void ContentResolver::OpenStoreForPack(std::string const& packId) {
