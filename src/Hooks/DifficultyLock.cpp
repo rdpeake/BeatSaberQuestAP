@@ -26,7 +26,7 @@ namespace {
     // a difficulty that belongs to the seed but is still locked must not be playable
     void EvaluateSelectedDifficulty(StandardLevelDetailView* detailView) {
         auto& session = BeatSaberQuestAP::Session::Instance();
-        if (!detailView || !session.IsConnected()) {
+        if (!detailView || !session.IsInArchipelagoMode()) {
             SetPlayButtonDisabled(false, "");
             return;
         }

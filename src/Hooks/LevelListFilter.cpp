@@ -30,7 +30,7 @@ namespace {
 
     LevelList* FilterToUnlockedLevels(LevelList* beatmapLevels) {
         auto& session = BeatSaberQuestAP::Session::Instance();
-        if (!beatmapLevels || !session.IsConnected())
+        if (!beatmapLevels || !session.IsInArchipelagoMode())
             return beatmapLevels;
 
         auto const& progression = session.GetProgression();

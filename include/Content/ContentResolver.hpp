@@ -51,6 +51,12 @@ namespace BeatSaberQuestAP {
         // re-checks after SongCore finishes loading songs
         void HandleSongsLoaded();
 
+        // retries BeatSaver lookups that failed, typically because the headset was offline
+        void RetryFailedLookups();
+
+        // records hashes known from elsewhere, such as an imported playlist
+        void LearnHashes(std::string const& beatSaverKey, std::vector<std::string> const& hashes);
+
     private:
         ContentResolver();
         void ResolveNextUnknownKey();
@@ -68,6 +74,7 @@ namespace BeatSaberQuestAP {
         std::vector<std::string> downloadQueue;
         ContentReport report;
         bool active = false;
+        bool resolvingKeys = false;
         bool waitingForSongs = false;
         int generation = 0;
     };

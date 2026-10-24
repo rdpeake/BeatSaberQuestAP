@@ -3,6 +3,7 @@ project(beatsaberquestap_host_tests CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_compile_definitions(RAPIDJSON_HAS_STDSTRING=1)
 
 include(FetchContent)
 FetchContent_Declare(

@@ -1,18 +1,21 @@
 #include "archipelago/SlotData.hpp"
 
+#include <algorithm>
 #include <functional>
 #include <stdexcept>
 
 namespace Archipelago {
 
     namespace {
-        // slot data values may arrive as JSON or as JSON encoded inside a string
-        void WithDecodedValue(rapidjson::Value const& slotDataJson, char const* key, std::function<void(rapidjson::Value const&)> const& consume) {
+        rapidjson::Value const* FindValue(rapidjson::Value const& slotDataJson, char const* key) {
             auto member = slotDataJson.FindMember(key);
-            if (member == slotDataJson.MemberEnd())
-                throw std::runtime_error(std::string("slot data is missing '") + key + "'");
+            if (member == slotDataJson.MemberEnd() || member->value.IsNull())
+                return nullptr;
+            return &member->value;
+        }
 
-            rapidjson::Value const& value = member->value;
+        // slot data values may arrive as JSON or as JSON encoded inside a string
+        void WithDecodedValue(rapidjson::Value const& value, std::function<void(rapidjson::Value const&)> const& consume) {
             if (value.IsString()) {
                 rapidjson::Document embedded;
                 embedded.Parse(value.GetString(), value.GetStringLength());
@@ -25,6 +28,18 @@ namespace Archipelago {
             consume(value);
         }
 
+        void WithRequiredValue(rapidjson::Value const& slotDataJson, char const* key, std::function<void(rapidjson::Value const&)> const& consume) {
+            auto value = FindValue(slotDataJson, key);
+            if (!value)
+                throw std::runtime_error(std::string("slot data is missing '") + key + "'");
+            WithDecodedValue(*value, consume);
+        }
+
+        void WithOptionalValue(rapidjson::Value const& slotDataJson, char const* key, std::function<void(rapidjson::Value const&)> const& consume) {
+            if (auto value = FindValue(slotDataJson, key))
+                WithDecodedValue(*value, consume);
+        }
+
         int64_t ReadInteger(rapidjson::Value const& value, char const* key) {
             if (value.IsInt64())
                 return value.GetInt64();
@@ -32,8 +47,12 @@ namespace Archipelago {
                 return value.GetBool() ? 1 : 0;
             if (value.IsDouble())
                 return static_cast<int64_t>(value.GetDouble());
-            if (value.IsString())
-                return std::stoll(value.GetString());
+            if (value.IsString()) {
+                try {
+                    return std::stoll(value.GetString());
+                } catch (std::exception const&) {
+                }
+            }
             throw std::runtime_error(std::string("slot data '") + key + "' is not a number");
         }
 
@@ -56,14 +75,43 @@ namespace Archipelago {
             if (!value.IsObject())
                 throw std::runtime_error(std::string("slot data '") + key + "' is not a dictionary");
         }
+
+        uint32_t ReadNodeKey(rapidjson::Value const& name, char const* key) {
+            try {
+                return static_cast<uint32_t>(std::stoul(name.GetString()));
+            } catch (std::exception const&) {
+                throw std::runtime_error(std::string("slot data '") + key + "' has a non-numeric node id");
+            }
+        }
     }
 
-    GameMode GameModeFromName(std::string_view gameModeName) {
-        if (gameModeName == "option_presetPass")
-            return GameMode::PresetPass;
-        if (gameModeName == "option_presetAccuracy")
-            return GameMode::PresetAccuracy;
-        return GameMode::Categories;
+    bool IsRandomizedMode(GameMode gameMode) {
+        return gameMode == GameMode::RandomizedPP || gameMode == GameMode::RandomizedAccuracy || gameMode == GameMode::RandomizedPass;
+    }
+
+    bool IsAccuracyMode(GameMode gameMode) {
+        return gameMode == GameMode::RandomizedAccuracy || gameMode == GameMode::PresetAccuracy;
+    }
+
+    GameMode ParseGameMode(rapidjson::Value const& value) {
+        if (value.IsString()) {
+            std::string_view name = value.GetString();
+            constexpr std::pair<std::string_view, GameMode> names[] = {
+                {"option_randomizedPP", GameMode::RandomizedPP},
+                {"option_randomizedAccuracy", GameMode::RandomizedAccuracy},
+                {"option_randomizedPass", GameMode::RandomizedPass},
+                {"option_presetAccuracy", GameMode::PresetAccuracy},
+                {"option_presetPass", GameMode::PresetPass},
+            };
+            for (auto const& [optionName, gameMode] : names) {
+                if (name == optionName || name == optionName.substr(7))
+                    return gameMode;
+            }
+        }
+        int64_t choice = ReadInteger(value, "game_mode");
+        if (choice < 0 || choice > static_cast<int64_t>(GameMode::PresetPass))
+            throw std::runtime_error("slot data 'game_mode' has unknown value " + std::to_string(choice));
+        return static_cast<GameMode>(choice);
     }
 
     SlotData ParseSlotData(rapidjson::Value const& slotDataJson) {
@@ -72,43 +120,62 @@ namespace Archipelago {
 
         SlotData slotData;
 
-        WithDecodedValue(slotDataJson, "DeathLink", [&](auto const& value) {
-            slotData.deathLinkEnabled = ReadInteger(value, "DeathLink") == 1;
+        WithRequiredValue(slotDataJson, "game_mode", [&](auto const& value) {
+            slotData.gameMode = ParseGameMode(value);
         });
-        WithDecodedValue(slotDataJson, "campaign_name", [&](auto const& value) {
-            slotData.campaignName = ReadString(value, "campaign_name");
-        });
-        WithDecodedValue(slotDataJson, "node_to_keystr", [&](auto const& value) {
+        WithRequiredValue(slotDataJson, "node_to_keystr", [&](auto const& value) {
             RequireObject(value, "node_to_keystr");
             for (auto const& entry : value.GetObject())
-                slotData.nodeToIdent[static_cast<uint32_t>(std::stoul(entry.name.GetString()))] = ReadString(entry.value, "node_to_keystr");
+                slotData.nodeToIdent[ReadNodeKey(entry.name, "node_to_keystr")] = ReadString(entry.value, "node_to_keystr");
         });
-        WithDecodedValue(slotDataJson, "keystr_to_node", [&](auto const& value) {
+        WithRequiredValue(slotDataJson, "keystr_to_node", [&](auto const& value) {
             RequireObject(value, "keystr_to_node");
             for (auto const& entry : value.GetObject())
                 slotData.identToNode[entry.name.GetString()] = static_cast<uint32_t>(ReadInteger(entry.value, "keystr_to_node"));
         });
-        WithDecodedValue(slotDataJson, "start_songs", [&](auto const& value) {
+        WithRequiredValue(slotDataJson, "start_songs", [&](auto const& value) {
             slotData.startNodes = ReadIntegerList(value, "start_songs");
         });
-        WithDecodedValue(slotDataJson, "map_type_counts", [&](auto const& value) {
+
+        WithOptionalValue(slotDataJson, "DeathLink", [&](auto const& value) {
+            slotData.deathLinkEnabled = ReadInteger(value, "DeathLink") == 1;
+        });
+        WithOptionalValue(slotDataJson, "campaign_name", [&](auto const& value) {
+            slotData.campaignName = ReadString(value, "campaign_name");
+        });
+        WithOptionalValue(slotDataJson, "num_grades", [&](auto const& value) {
+            slotData.gradeCount = std::max<int>(1, static_cast<int>(ReadInteger(value, "num_grades")));
+        });
+        WithOptionalValue(slotDataJson, "map_type_counts", [&](auto const& value) {
             slotData.mapTypeCounts = ReadIntegerList(value, "map_type_counts");
         });
-        WithDecodedValue(slotDataJson, "game_mode", [&](auto const& value) {
-            slotData.gameModeName = ReadString(value, "game_mode");
+        WithOptionalValue(slotDataJson, "lock_goal_map", [&](auto const& value) {
+            slotData.lockGoalMap = ReadInteger(value, "lock_goal_map") != 0;
         });
-        WithDecodedValue(slotDataJson, "num_grades", [&](auto const& value) {
-            slotData.gradeCount = static_cast<int>(ReadInteger(value, "num_grades"));
+        WithOptionalValue(slotDataJson, "goal_node_id", [&](auto const& value) {
+            slotData.goalNode = static_cast<uint32_t>(ReadInteger(value, "goal_node_id"));
         });
-        WithDecodedValue(slotDataJson, "location_name_to_mnemonic", [&](auto const& value) {
+        WithOptionalValue(slotDataJson, "bloq_keys_required", [&](auto const& value) {
+            slotData.bloqKeysRequired = static_cast<int>(ReadInteger(value, "bloq_keys_required"));
+        });
+        WithOptionalValue(slotDataJson, "songs", [&](auto const& value) {
+            if (!value.IsObject())
+                return;
+            for (auto const& entry : value.GetObject()) {
+                if (entry.value.IsObject() && entry.value.HasMember("name") && entry.value["name"].IsString())
+                    slotData.songNames[ReadNodeKey(entry.name, "songs")] = entry.value["name"].GetString();
+            }
+        });
+        WithOptionalValue(slotDataJson, "location_name_to_mnemonic", [&](auto const& value) {
             RequireObject(value, "location_name_to_mnemonic");
-            for (auto const& entry : value.GetObject())
-                slotData.locationNameToMnemonic[entry.name.GetString()] = ReadString(entry.value, "location_name_to_mnemonic");
+            for (auto const& entry : value.GetObject()) {
+                if (entry.value.IsString())
+                    slotData.locationNameToMnemonic[entry.name.GetString()] = entry.value.GetString();
+            }
         });
 
-        slotData.gameMode = GameModeFromName(slotData.gameModeName);
-        if (slotData.gameMode == GameMode::Categories && slotData.mapTypeCounts.size() < categoryCount)
-            throw std::runtime_error("slot data 'map_type_counts' has fewer than 4 categories");
+        if (IsRandomizedMode(slotData.gameMode) && slotData.mapTypeCounts.size() < categoryCount)
+            throw std::runtime_error("slot data 'map_type_counts' needs 4 categories in randomized modes");
 
         return slotData;
     }

@@ -7,6 +7,7 @@
 
 #include "archipelago/ApbsArchive.hpp"
 #include "archipelago/BeatSaverKeyCache.hpp"
+#include "archipelago/SavedSession.hpp"
 
 using namespace Archipelago;
 
@@ -60,6 +61,32 @@ namespace {
         }
         Expect(threw, "invalid archive reported");
     }
+
+    void TestSavedSessionRoundTrip(std::filesystem::path const& workDirectory) {
+        auto sessionPath = (workDirectory / "session.json").string();
+        Expect(!LoadSavedSession(sessionPath).has_value(), "no session before saving");
+
+        SavedSession session;
+        session.host = "archipelago.gg";
+        session.port = 38281;
+        session.slotName = "Saber \"Player\"";
+        session.passwordRequired = true;
+        session.slotDataJson = R"({"game_mode":1,"node_to_keystr":{}})";
+        session.receivedItemNames = {"Progressive Speed Unlock", "Bloq Key"};
+        session.unconfirmedLocations = {1013, 4007};
+        Expect(WriteSavedSession(sessionPath, session), "session saved");
+
+        auto loaded = LoadSavedSession(sessionPath);
+        Expect(loaded.has_value(), "session loads");
+        Expect(loaded && loaded->slotName == session.slotName && loaded->port == 38281 && loaded->passwordRequired, "connection details survive");
+        Expect(loaded && loaded->slotDataJson == session.slotDataJson, "slot data survives as text");
+        Expect(loaded && loaded->receivedItemNames == session.receivedItemNames, "items survive");
+        Expect(loaded && loaded->unconfirmedLocations == session.unconfirmedLocations, "unsent checks survive");
+        Expect(ReadFile(sessionPath).find("password\"") == std::string::npos, "no password field is written");
+
+        DeleteSavedSession(sessionPath);
+        Expect(!LoadSavedSession(sessionPath).has_value(), "session deleted");
+    }
 }
 
 int main() {
@@ -68,6 +95,7 @@ int main() {
 
     TestKeyCacheRoundTrip(workDirectory);
     TestApbsExtraction(workDirectory);
+    TestSavedSessionRoundTrip(workDirectory);
 
     std::filesystem::remove_all(workDirectory);
     if (failures > 0) {

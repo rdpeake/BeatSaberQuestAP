@@ -8,6 +8,7 @@
 
 #include "archipelago/ArchipelagoClient.hpp"
 #include "archipelago/ProgressionRules.hpp"
+#include "archipelago/SavedSession.hpp"
 #include "archipelago/SlotData.hpp"
 
 namespace BeatSaberQuestAP {
@@ -23,19 +24,29 @@ namespace BeatSaberQuestAP {
         std::string rankName;
     };
 
-    // owns the Archipelago connection; every method must be called on the main thread
+    // owns the Archipelago connection; every method must be called on the main thread.
+    // Archipelago mode starts with the first successful join and lasts until the player leaves,
+    // so song availability follows the last known state of the slot even while offline
     class Session {
     public:
         static Session& Instance();
 
-        void Connect(Archipelago::ConnectionSettings const& settings);
-        void Disconnect();
+        // re-enters Archipelago mode from the previous launch, if any
+        void RestoreSavedSession();
 
-        bool IsConnected() const;
+        void Connect(Archipelago::ConnectionSettings const& settings);
+        void ReconnectNow();
+        void LeaveArchipelago();
+
+        bool IsInArchipelagoMode() const;
+        bool IsOnline() const;
+        bool NeedsPasswordToReconnect() const;
         Archipelago::ConnectionState GetConnectionState() const;
         std::string const& GetStatusText() const;
         std::optional<Archipelago::SlotData> const& GetSlotData() const;
         Archipelago::Progression const& GetProgression() const;
+        std::optional<Archipelago::SavedSession> const& GetActiveSession() const;
+        size_t GetUnsentCheckCount() const;
 
         // nullopt when the level cannot be matched to an ident yet (unknown custom hash)
         std::optional<std::string> IdentFor(std::string_view levelId, std::string_view characteristic, int difficulty) const;
@@ -49,16 +60,23 @@ namespace BeatSaberQuestAP {
     private:
         Session() = default;
         void EnsureClient();
+        bool IsSameSlot(Archipelago::ConnectionSettings const& settings) const;
+        void EnterArchipelagoMode(Archipelago::SlotData const& slotData, std::string const& slotDataJson);
+        void SaveActiveSession();
         void HandleStateChanged(Archipelago::ConnectionState state, std::string const& detail);
-        void HandleConnected(Archipelago::SlotData const& slotData);
+        void HandleConnected(Archipelago::SlotData const& slotData, std::string const& slotDataJson);
         void HandleItemsChanged(std::vector<Archipelago::ReceivedItem> const& items);
+        void HandlePendingLocationsChanged(std::vector<int64_t> const& unconfirmedLocations);
         void HandleDeathLink(Archipelago::DeathLinkEvent const& deathLink);
 
         std::unique_ptr<Archipelago::ArchipelagoClient> client;
+        Archipelago::ConnectionSettings currentSettings;
         Archipelago::ConnectionState connectionState = Archipelago::ConnectionState::Disconnected;
         std::string statusText = "Not connected";
+        std::optional<Archipelago::SavedSession> activeSession;
         std::optional<Archipelago::SlotData> slotData;
         Archipelago::Progression progression;
+        bool passwordNeeded = false;
         bool goalReported = false;
         std::vector<std::function<void()>> changeListeners;
     };

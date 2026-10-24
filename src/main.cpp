@@ -43,6 +43,9 @@ MOD_EXPORT_FUNC void late_load() {
         Hooks::RefreshDifficultyLock();
     });
 
+    // waits for the main thread scheduler, which runs once the game reaches the menu
+    BSML::MainThreadScheduler::Schedule([] { Session::Instance().RestoreSavedSession(); });
+
     SongCore::API::Loading::GetSongsLoadedEvent().addCallback([](auto) {
         BSML::MainThreadScheduler::Schedule([] {
             if (!importedInitialPatches) {

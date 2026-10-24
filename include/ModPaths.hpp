@@ -5,6 +5,7 @@
 namespace BeatSaberQuestAP::ModPaths {
     std::string DataDirectory();
     std::string ConnectionSettingsFile();
+    std::string SessionFile();
     std::string CertificateBundleFile();
     std::string BeatSaverKeyCacheFile();
     std::string PlaylistsDirectory();

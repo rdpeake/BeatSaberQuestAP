@@ -1,15 +1,37 @@
 #include "Content/PlaylistImporter.hpp"
 
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <vector>
 
+#include "Content/ContentResolver.hpp"
 #include "Logger.hpp"
 #include "ModPaths.hpp"
 #include "archipelago/ApbsArchive.hpp"
 #include "archipelago/LevelIdentity.hpp"
+#include "rapidjson/document.h"
 #include "songcore/shared/SongCore.hpp"
 
 namespace BeatSaberQuestAP::PlaylistImporter {
+
+    namespace {
+        // apworld playlists list each song's BeatSaver key with its hash, which lets songs match without going online
+        void LearnHashesFromPlaylist(std::string const& playlistPath) {
+            std::ifstream stream(playlistPath);
+            std::stringstream contents;
+            contents << stream.rdbuf();
+            rapidjson::Document playlist;
+            playlist.Parse(contents.str().c_str());
+            if (playlist.HasParseError() || !playlist.IsObject() || !playlist.HasMember("songs") || !playlist["songs"].IsArray())
+                return;
+            for (auto const& song : playlist["songs"].GetArray()) {
+                if (!song.IsObject() || !song.HasMember("key") || !song["key"].IsString() || !song.HasMember("hash") || !song["hash"].IsString())
+                    continue;
+                ContentResolver::Instance().LearnHashes(song["key"].GetString(), {song["hash"].GetString()});
+            }
+        }
+    }
 
     std::string ImportPendingPatches() {
         std::filesystem::path const searchDirectories[] = {ModPaths::DataDirectory(), ModPaths::PlaylistsDirectory()};
@@ -31,6 +53,8 @@ namespace BeatSaberQuestAP::PlaylistImporter {
             try {
                 auto written = Archipelago::ExtractPlaylistsFromApbs(patchFile.string(), ModPaths::PlaylistsDirectory());
                 importedPlaylists += static_cast<int>(written.size());
+                for (auto const& playlistPath : written)
+                    LearnHashesFromPlaylist(playlistPath);
                 // keep the patch, renamed, in case the player needs it again
                 std::filesystem::rename(patchFile, patchFile.string() + ".imported", ignoredError);
                 logger.info("Imported {} playlist(s) from {}", written.size(), patchFile.string());

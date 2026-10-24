@@ -98,6 +98,7 @@ namespace BeatSaberQuestAP {
     void ContentResolver::Reset() {
         generation++;
         active = false;
+        resolvingKeys = false;
         waitingForSongs = false;
         requiredIdents.clear();
         keysToResolve.clear();
@@ -127,10 +128,30 @@ namespace BeatSaberQuestAP {
         if (!keysToResolve.empty()) {
             report.progressText = "Looking up " + std::to_string(keysToResolve.size()) + " song(s) on BeatSaver...";
             Publish();
+            resolvingKeys = true;
             ResolveNextUnknownKey();
             return;
         }
         Evaluate();
+    }
+
+    void ContentResolver::RetryFailedLookups() {
+        if (!active || resolvingKeys || report.downloading || keysUnknownToBeatSaver.empty())
+            return;
+        keysToResolve.assign(keysUnknownToBeatSaver.begin(), keysUnknownToBeatSaver.end());
+        keysUnknownToBeatSaver.clear();
+        report.checking = true;
+        report.progressText = "Looking up " + std::to_string(keysToResolve.size()) + " song(s) on BeatSaver...";
+        Publish();
+        resolvingKeys = true;
+        ResolveNextUnknownKey();
+    }
+
+    void ContentResolver::LearnHashes(std::string const& beatSaverKey, std::vector<std::string> const& hashes) {
+        if (beatSaverKey.empty() || hashes.empty())
+            return;
+        keyCache.Store(beatSaverKey, hashes);
+        keyCache.Save();
     }
 
     std::optional<std::string> ContentResolver::MapIdentifierForLevelId(std::string_view levelId) const {
@@ -148,6 +169,7 @@ namespace BeatSaberQuestAP {
 
     void ContentResolver::ResolveNextUnknownKey() {
         if (keysToResolve.empty()) {
+            resolvingKeys = false;
             keyCache.Save();
             Evaluate();
             return;
@@ -219,7 +241,7 @@ namespace BeatSaberQuestAP {
 
             if (keysUnknownToBeatSaver.contains(ident.beatSaverKey)) {
                 unplayableMaps.insert(ident.mapIdentifier);
-                unavailable.push_back("BeatSaver map " + ident.beatSaverKey + " could not be looked up");
+                unavailable.push_back("BeatSaver map " + ident.beatSaverKey + " could not be looked up; it will be retried when online");
                 continue;
             }
             auto level = FindInstalledCustomLevel(keyCache.HashesForKey(ident.beatSaverKey));

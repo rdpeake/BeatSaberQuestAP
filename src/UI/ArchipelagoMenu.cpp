@@ -25,7 +25,8 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             UnityW<HMUI::CurvedTextMeshPro> contentText;
             UnityW<HMUI::CurvedTextMeshPro> importText;
             UnityW<UnityEngine::UI::Button> connectButton;
-            UnityW<UnityEngine::UI::Button> disconnectButton;
+            UnityW<UnityEngine::UI::Button> reconnectButton;
+            UnityW<UnityEngine::UI::Button> leaveButton;
             UnityW<UnityEngine::UI::Button> downloadButton;
             UnityW<UnityEngine::UI::VerticalLayoutGroup> storeButtonList;
         };
@@ -119,7 +120,8 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             });
 
             widgets.connectButton = BSML::Lite::CreateUIButton(container, "Connect", [] { Connect(); });
-            widgets.disconnectButton = BSML::Lite::CreateUIButton(container, "Disconnect", [] { Session::Instance().Disconnect(); });
+            widgets.reconnectButton = BSML::Lite::CreateUIButton(container, "Reconnect now", [] { Session::Instance().ReconnectNow(); });
+            widgets.leaveButton = BSML::Lite::CreateUIButton(container, "Leave Archipelago", [] { Session::Instance().LeaveArchipelago(); });
 
             widgets.contentText = BSML::Lite::CreateText(container, "", 3.5f);
             widgets.downloadButton = BSML::Lite::CreateUIButton(container, "Download missing songs", [] {
@@ -151,22 +153,36 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             return;
         auto& session = Session::Instance();
         auto state = session.GetConnectionState();
-        widgets.connectionText->text = "<color=" + ColorFor(state) + ">" + session.GetStatusText() + "</color>";
+        bool inArchipelagoMode = session.IsInArchipelagoMode();
+        bool online = session.IsOnline();
+        bool connecting = state == Archipelago::ConnectionState::Connecting;
 
-        bool busy = state == Archipelago::ConnectionState::Connecting;
-        bool connected = state == Archipelago::ConnectionState::Connected;
-        if (widgets.connectButton)
-            widgets.connectButton->interactable = !busy;
-        if (widgets.disconnectButton)
-            widgets.disconnectButton->gameObject->SetActive(connected || busy);
+        std::string status = "<color=" + ColorFor(state) + ">" + session.GetStatusText() + "</color>";
+        if (inArchipelagoMode && !online) {
+            status = "<color=#FFD24A>Offline: songs stay locked to slot " + session.GetActiveSession()->slotName + "</color>\n" + status;
+            if (session.NeedsPasswordToReconnect())
+                status += "\nEnter the room password above and press Reconnect";
+        }
+        if (auto unsentChecks = session.GetUnsentCheckCount(); unsentChecks > 0)
+            status += "\n" + std::to_string(unsentChecks) + " check(s) waiting to be sent";
+        widgets.connectionText->text = status;
+
+        if (widgets.connectButton) {
+            widgets.connectButton->interactable = !connecting;
+            widgets.connectButton->gameObject->SetActive(!inArchipelagoMode || session.NeedsPasswordToReconnect() || !online);
+        }
+        if (widgets.reconnectButton)
+            widgets.reconnectButton->gameObject->SetActive(inArchipelagoMode && !online && !session.NeedsPasswordToReconnect());
+        if (widgets.leaveButton)
+            widgets.leaveButton->gameObject->SetActive(inArchipelagoMode || connecting);
 
         auto const& report = ContentResolver::Instance().GetReport();
         if (widgets.contentText)
-            widgets.contentText->text = connected ? DescribeContent(report) : "";
+            widgets.contentText->text = inArchipelagoMode ? DescribeContent(report) : "";
         if (widgets.downloadButton) {
-            widgets.downloadButton->gameObject->SetActive(connected && !report.downloadableKeys.empty());
+            widgets.downloadButton->gameObject->SetActive(inArchipelagoMode && online && !report.downloadableKeys.empty());
             widgets.downloadButton->interactable = !report.downloading && !report.checking;
         }
-        RebuildStoreButtons(connected ? report : ContentReport{});
+        RebuildStoreButtons(inArchipelagoMode ? report : ContentReport{});
     }
 }
