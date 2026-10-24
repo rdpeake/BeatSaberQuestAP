@@ -24,7 +24,7 @@ jobs:
         run: |
           cmake -G Ninja -S tests -B build-tests -DCMAKE_BUILD_TYPE=Debug
           cmake --build build-tests
-          ctest --test-dir build-tests --output-on-failure
+          ./scripts/annotate-failure.sh "host tests" ctest --test-dir build-tests --output-on-failure
 
   quest:
     runs-on: ubuntu-latest
