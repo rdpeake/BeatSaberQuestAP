@@ -109,6 +109,7 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
         };
 
         MenuWidgets widgets;
+        bool showDebugMessages = false;
         Archipelago::ConnectionSettings pendingSettings;
         std::vector<std::string> shownStorePackIds;
         std::vector<std::shared_ptr<TextField>> textFields;
@@ -260,6 +261,12 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
             widgets.leaveButton = BSML::Lite::CreateUIButton(container, "Leave Archipelago", [] { Session::Instance().LeaveArchipelago(); });
 
             widgets.logText = CreateMessageText(container, 3.0f);
+            showDebugMessages = SettingsStore::LoadShowDebugMessages();
+            BSML::Lite::CreateToggle(container, "Show debug messages", showDebugMessages, [](bool enabled) {
+                showDebugMessages = enabled;
+                SettingsStore::SaveShowDebugMessages(enabled);
+                Refresh();
+            });
             widgets.contentText = CreateMessageText(container, 3.5f);
             widgets.downloadButton = BSML::Lite::CreateUIButton(container, "Download missing songs", [] {
                 ContentResolver::Instance().DownloadMissingSongs();
@@ -316,10 +323,14 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
         SetMessageText(widgets.contentText, inArchipelagoMode ? DescribeContent(report) : "");
 
         constexpr size_t shownLogMessages = 10;
-        auto const& logMessages = session.GetLogMessages();
+        std::vector<std::string const*> visibleMessages;
+        for (auto const& message : session.GetLogMessages()) {
+            if (showDebugMessages || message.level == LogLevel::Player)
+                visibleMessages.push_back(&message.text);
+        }
         std::string log;
-        for (size_t index = logMessages.size() > shownLogMessages ? logMessages.size() - shownLogMessages : 0; index < logMessages.size(); index++)
-            log += (log.empty() ? "" : "\n") + logMessages[index];
+        for (size_t index = visibleMessages.size() > shownLogMessages ? visibleMessages.size() - shownLogMessages : 0; index < visibleMessages.size(); index++)
+            log += (log.empty() ? "" : "\n") + *visibleMessages[index];
         SetMessageText(widgets.logText, log.empty() ? "" : "<color=#AAAAAA>Recent messages</color>\n" + log);
         if (widgets.downloadButton) {
             widgets.downloadButton->gameObject->SetActive(inArchipelagoMode && online && !report.downloadableKeys.empty());

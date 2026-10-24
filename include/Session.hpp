@@ -14,6 +14,18 @@
 
 namespace BeatSaberQuestAP {
 
+    enum class LogLevel {
+        // what a player needs during a normal game
+        Player,
+        // explanations useful while testing
+        Debug,
+    };
+
+    struct LogMessage {
+        LogLevel level = LogLevel::Player;
+        std::string text;
+    };
+
     struct FinishedLevel {
         std::string levelId;
         std::string characteristic;
@@ -59,8 +71,8 @@ namespace BeatSaberQuestAP {
         void NotifyChanged();
 
         // shown in the Archipelago menu, newest last
-        void AddLogMessage(std::string message);
-        std::deque<std::string> const& GetLogMessages() const;
+        void AddLogMessage(std::string message, LogLevel level = LogLevel::Player);
+        std::deque<LogMessage> const& GetLogMessages() const;
 
     private:
         Session() = default;
@@ -84,7 +96,7 @@ namespace BeatSaberQuestAP {
         bool passwordNeeded = false;
         bool goalReported = false;
         std::vector<std::function<void()>> changeListeners;
-        std::deque<std::string> logMessages;
+        std::deque<LogMessage> logMessages;
         size_t knownItemCount = 0;
     };
 }

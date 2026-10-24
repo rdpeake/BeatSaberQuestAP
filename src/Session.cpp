@@ -13,7 +13,7 @@ namespace BeatSaberQuestAP {
 
     namespace {
         constexpr char const* deathLinkCause = "too many bloqs :(";
-        constexpr size_t maximumLogMessages = 40;
+        constexpr size_t maximumLogMessages = 80;
         constexpr char const* difficultyNames[] = {"Easy", "Normal", "Hard", "Expert", "Expert+"};
 
         std::string DescribeDifficulty(int difficulty) {
@@ -57,8 +57,10 @@ namespace BeatSaberQuestAP {
             logger.info("Server [{}]: {}", message.type, message.text);
             // other players' item sends and hints would drown out what matters to this player
             bool itemTraffic = message.type == "ItemSend" || message.type == "ItemCheat" || message.type == "Hint";
-            if (!itemTraffic || message.involvesThisSlot)
-                AddLogMessage(message.text);
+            bool chat = message.type == "Chat" || message.type == "ServerChat";
+            if (itemTraffic && !message.involvesThisSlot)
+                return;
+            AddLogMessage(message.text, itemTraffic || chat ? LogLevel::Player : LogLevel::Debug);
         };
 
         client = std::make_unique<Archipelago::ArchipelagoClient>(
@@ -198,35 +200,35 @@ namespace BeatSaberQuestAP {
         std::string played = songName + " (" + finishedLevel.characteristic + " " + DescribeDifficulty(finishedLevel.difficulty) + ")";
 
         if (!node) {
-            AddLogMessage(played + " is not a song in this seed");
+            AddLogMessage(played + " is not a song in this seed", LogLevel::Debug);
             return;
         }
 
         if (finishedLevel.failed && !causedByDeathLink) {
             client->SendDeathLink(deathLinkCause);
             if (slotData->deathLinkEnabled)
-                AddLogMessage("Failed " + played + (IsOnline() ? ": DeathLink sent" : ": offline, DeathLink not sent"));
+                AddLogMessage("Failed " + played + (IsOnline() ? ": DeathLink sent" : ": offline, DeathLink not sent"), LogLevel::Debug);
         }
 
         if (!finishedLevel.cleared)
             return;
         if (finishedLevel.usedModifiers) {
-            AddLogMessage("Cleared " + played + " with modifiers: no checks (turn modifiers off)");
+            AddLogMessage("Cleared " + played + " with modifiers: no checks (turn modifiers off)", LogLevel::Debug);
             return;
         }
         if (finishedLevel.practice) {
-            AddLogMessage("Cleared " + played + " in practice mode: no checks");
+            AddLogMessage("Cleared " + played + " in practice mode: no checks", LogLevel::Debug);
             return;
         }
         if (!Archipelago::IsIdentUnlocked(progression, *ident)) {
-            AddLogMessage("Cleared " + played + ", but that difficulty is still locked: no checks");
+            AddLogMessage("Cleared " + played + ", but that difficulty is still locked: no checks", LogLevel::Debug);
             return;
         }
 
         auto locations = Archipelago::LocationsForClear(*slotData, progression, *node, Archipelago::GradeIndexFromRankName(finishedLevel.rankName));
         if (locations.empty()) {
             std::string reason = Archipelago::IsAccuracyMode(slotData->gameMode) ? "rank " + finishedLevel.rankName + " is below C" : "the goal needs more Bloq Keys";
-            AddLogMessage("Cleared " + played + ": no checks, " + reason);
+            AddLogMessage("Cleared " + played + ": no checks, " + reason, LogLevel::Debug);
             return;
         }
         // checks made offline are held by the client and saved until the server confirms them
@@ -243,15 +245,15 @@ namespace BeatSaberQuestAP {
             listener();
     }
 
-    void Session::AddLogMessage(std::string message) {
+    void Session::AddLogMessage(std::string message, LogLevel level) {
         logger.info("Log: {}", message);
-        logMessages.push_back(std::move(message));
+        logMessages.push_back({level, std::move(message)});
         while (logMessages.size() > maximumLogMessages)
             logMessages.pop_front();
         NotifyChanged();
     }
 
-    std::deque<std::string> const& Session::GetLogMessages() const {
+    std::deque<LogMessage> const& Session::GetLogMessages() const {
         return logMessages;
     }
 
@@ -279,7 +281,7 @@ namespace BeatSaberQuestAP {
         statusText = detail;
         logger.info("Connection: {}", detail);
         if (stateChanged && state != Archipelago::ConnectionState::Connecting)
-            logMessages.push_back(detail);
+            logMessages.push_back({LogLevel::Debug, detail});
         if (state == Archipelago::ConnectionState::Failed && activeSession)
             passwordNeeded = detail.find("wrong password") != std::string::npos;
         NotifyChanged();
@@ -314,10 +316,10 @@ namespace BeatSaberQuestAP {
             for (size_t index = knownItemCount; index < items.size(); index++) {
                 auto const& item = items[index];
                 std::string itemName = item.itemName.empty() ? "item " + std::to_string(item.itemId) : item.itemName;
-                AddLogMessage("Received " + itemName + " from " + client->GetPlayerAlias(item.sendingPlayer));
+                AddLogMessage("Received " + itemName + " from " + client->GetPlayerAlias(item.sendingPlayer), LogLevel::Debug);
             }
         } else if (knownItemCount == 0 && !items.empty()) {
-            AddLogMessage(std::to_string(items.size()) + " item(s) received so far");
+            AddLogMessage(std::to_string(items.size()) + " item(s) received so far", LogLevel::Debug);
         }
         knownItemCount = items.size();
         activeSession->receivedItemNames = itemNames;

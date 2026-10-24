@@ -56,4 +56,25 @@ namespace BeatSaberQuestAP::SettingsStore {
         if (!stream)
             logger.warn("Could not save connection settings");
     }
+
+    bool LoadShowDebugMessages() {
+        std::ifstream stream(ModPaths::PreferencesFile());
+        if (!stream)
+            return false;
+        std::stringstream contents;
+        contents << stream.rdbuf();
+        rapidjson::Document document;
+        document.Parse(contents.str().c_str());
+        return !document.HasParseError() && document.IsObject() && document.HasMember("showDebugMessages")
+            && document["showDebugMessages"].IsBool() && document["showDebugMessages"].GetBool();
+    }
+
+    void SaveShowDebugMessages(bool showDebugMessages) {
+        std::error_code ignoredError;
+        std::filesystem::create_directories(ModPaths::DataDirectory(), ignoredError);
+        std::ofstream stream(ModPaths::PreferencesFile(), std::ios::trunc);
+        stream << (showDebugMessages ? R"({"showDebugMessages":true})" : R"({"showDebugMessages":false})");
+        if (!stream)
+            logger.warn("Could not save preferences");
+    }
 }

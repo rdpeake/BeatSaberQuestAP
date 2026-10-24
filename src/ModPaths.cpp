@@ -16,6 +16,10 @@ namespace BeatSaberQuestAP::ModPaths {
         return DataDirectory() + "session.json";
     }
 
+    std::string PreferencesFile() {
+        return DataDirectory() + "preferences.json";
+    }
+
     std::string CertificateBundleFile() {
         return DataDirectory() + "cacert.pem";
     }
