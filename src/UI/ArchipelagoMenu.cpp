@@ -52,7 +52,7 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
         UnityW<BSML::ModalKeyboard> keyboard;
         std::shared_ptr<TextField> editingField;
 
-        void ShowFieldValue(TextField const& field) {
+        void ShowFieldValue(TextField& field) {
             if (!field.button)
                 return;
             std::string value = field.read();
