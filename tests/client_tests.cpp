@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -302,7 +303,8 @@ int main() {
         Expect(server.goalStatus == 30, "goal status sent");
         Expect(server.bouncedCauses == std::vector<std::string>({"too many bloqs :("}), "death link sent");
     }
-    Expect(deathLinks.size() == 3, "own death link echo ignored");
+    bool echoReceived = std::any_of(deathLinks.begin(), deathLinks.end(), [](DeathLinkEvent const& deathLink) { return deathLink.cause == "echo"; });
+    Expect(!echoReceived, "own death link echo ignored");
 
     client.Disconnect();
     Expect(client.GetState() == ConnectionState::Disconnected, "disconnects cleanly");
