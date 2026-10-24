@@ -32,7 +32,9 @@ Outside Archipelago mode the game behaves normally.
 
 ## Building a song list for your YAML
 
-Press **Export song list for YAML** in the Archipelago menu. You don't need to be connected. It writes `BeatSaberAP-songs.yaml` to the headset's `Download` folder, or to the mod's folder if that can't be written. The file lists every installed custom song, the base game and extras, and any DLC you own.
+Press **Export song list for YAML** in the Archipelago menu. You don't need to be connected. The list covers every installed custom song, the base game and extras, and any DLC you own. It is copied to the clipboard, so you can paste it into the Quest browser or a chat app, and saved as `BeatSaberAP-songs.yaml` in the headset's `Download` folder (or the mod's folder if that can't be written).
+
+Other apps on the headset, including the Files app, can't see that file because Beat Saber owns it. Copy it to a PC over USB instead, or with `adb pull /sdcard/Download/BeatSaberAP-songs.yaml`.
 
 Copy its `songs:` block under `Beat Saber:` in your YAML, set `game_mode` to `presetPass` or `presetAccuracy`, and delete songs you don't want. Each entry uses the song's hardest Standard difficulty, and a comment lists the other difficulties it has. Custom songs that BeatSaver doesn't know are left out.
 

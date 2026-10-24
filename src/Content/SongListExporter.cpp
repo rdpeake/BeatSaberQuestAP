@@ -26,17 +26,17 @@
 #include "GlobalNamespace/MainFlowCoordinator.hpp"
 #include "Hooks/Hooks.hpp"
 #include "Logger.hpp"
-#include "MediaScanner.hpp"
 #include "ModPaths.hpp"
 #include "Session.hpp"
 #include "System/Threading/CancellationToken.hpp"
 #include "System/Threading/Tasks/Task_1.hpp"
+#include "UnityEngine/GUIUtility.hpp"
 #include "songcore/shared/SongCore.hpp"
 
 namespace BeatSaberQuestAP::SongListExporter {
 
     namespace {
-        // visible in the headset's Files app and over USB
+        // other apps can't list files Beat Saber owns, but USB file transfer and adb can
         constexpr char const* downloadsDirectory = "/sdcard/Download/";
         constexpr char const* exportFileName = "BeatSaberAP-songs.yaml";
         constexpr size_t hashesPerBeatSaverRequest = 50;
@@ -134,10 +134,8 @@ namespace BeatSaberQuestAP::SongListExporter {
                 std::ofstream file(path, std::ios::binary | std::ios::trunc);
                 file << yaml;
                 file.close();
-                if (file.good()) {
-                    MediaScanner::ScanFile(path);
+                if (file.good())
                     return path;
-                }
                 logger.warn("Could not write {}", path);
             }
             return std::nullopt;
@@ -165,14 +163,26 @@ namespace BeatSaberQuestAP::SongListExporter {
                 + "and delete any songs you don't want. Each song only counts on the difficulty listed.";
             if (unknownToBeatSaver > 0)
                 header += "\n" + std::to_string(unknownToBeatSaver) + " installed song(s) were left out because BeatSaver doesn't know them";
-            auto path = WriteExport(Archipelago::BuildSongsYaml(std::move(exportedSongs), header));
+            auto yaml = Archipelago::BuildSongsYaml(std::move(exportedSongs), header);
             exporting = false;
-            if (!path) {
-                SetStatus("<color=#FF6B6B>Could not write the song list</color>");
+
+            bool copied = false;
+            try {
+                UnityEngine::GUIUtility::set_systemCopyBuffer(yaml);
+                copied = true;
+            } catch (std::exception const& error) {
+                logger.warn("Could not copy the song list to the clipboard: {}", error.what());
+            }
+            auto path = WriteExport(yaml);
+            if (!copied && !path) {
+                SetStatus("<color=#FF6B6B>Could not copy or save the song list</color>");
                 return;
             }
 
-            std::string summary = "Exported " + std::to_string(customCount) + " custom and " + std::to_string(officialCount) + " official songs to " + *path;
+            std::string songCounts = std::to_string(customCount) + " custom and " + std::to_string(officialCount) + " official songs";
+            std::string summary = copied ? "Copied " + songCounts + " to the clipboard" : "Exported " + songCounts;
+            if (path)
+                summary += "\nSaved to " + *path + " (copy it off over USB)";
             if (unknownToBeatSaver > 0)
                 summary += "\n" + std::to_string(unknownToBeatSaver) + " not on BeatSaver were left out";
             if (withoutDifficulties > 0)
