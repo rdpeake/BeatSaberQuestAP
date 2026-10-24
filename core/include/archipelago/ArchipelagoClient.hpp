@@ -130,6 +130,7 @@ namespace Archipelago {
         std::unique_ptr<ix::WebSocket> socket;
         ConnectionSettings settings;
         std::vector<std::string> candidateUrls;
+        std::string workingUrl;
         size_t candidateIndex = 0;
         bool socketOpened = false;
         bool userRequestedDisconnect = false;

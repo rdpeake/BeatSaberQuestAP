@@ -138,6 +138,13 @@ namespace Archipelago {
 
         if (scheme == "ws" || scheme == "wss")
             return {scheme + "://" + hostAndPort};
+
+        // self-hosted servers on a LAN rarely have TLS; trying it first makes them log a bad request
+        std::string hostOnly = address.substr(0, address.find(':'));
+        bool isNumericAddress = !hostOnly.empty() && hostOnly.find_first_not_of("0123456789.") == std::string::npos;
+        bool isLocalName = hostOnly == "localhost" || (hostOnly.size() > 6 && hostOnly.ends_with(".local"));
+        if (isNumericAddress || isLocalName)
+            return {"ws://" + hostAndPort, "wss://" + hostAndPort};
         return {"wss://" + hostAndPort, "ws://" + hostAndPort};
     }
 
@@ -354,6 +361,10 @@ namespace Archipelago {
             std::lock_guard lock(stateMutex);
             if (userRequestedDisconnect || state != ConnectionState::Reconnecting || socket)
                 return;
+            // retry with whichever scheme worked last
+            auto working = std::find(candidateUrls.begin(), candidateUrls.end(), workingUrl);
+            if (working != candidateUrls.end())
+                std::rotate(candidateUrls.begin(), working, working + 1);
             candidateIndex = 0;
             host = settings.host;
         }
@@ -554,6 +565,8 @@ namespace Archipelago {
                     std::lock_guard lock(stateMutex);
                     sessionEstablished = true;
                     reconnectAttempt = 0;
+                    if (candidateIndex < candidateUrls.size())
+                        workingUrl = candidateUrls[candidateIndex];
                     teamNumber = packet.HasMember("team") && packet["team"].IsInt() ? packet["team"].GetInt() : 0;
                     slotNumber = packet.HasMember("slot") && packet["slot"].IsInt() ? packet["slot"].GetInt() : 0;
                     if (packet.HasMember("slot_info") && packet["slot_info"].IsObject()) {

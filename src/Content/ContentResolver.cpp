@@ -16,6 +16,7 @@
 #include "GlobalNamespace/IEntitlementModel.hpp"
 #include "GlobalNamespace/MainFlowCoordinator.hpp"
 #include "GlobalNamespace/OpenProductStoreResult.hpp"
+#include "Hooks/Hooks.hpp"
 #include "Logger.hpp"
 #include "ModPaths.hpp"
 #include "Session.hpp"
@@ -52,6 +53,8 @@ namespace BeatSaberQuestAP {
         }
 
         GlobalNamespace::BeatmapLevelsModel* GetBeatmapLevelsModel() {
+            if (!Hooks::IsMainMenuReady())
+                return nullptr;
             auto mainFlowCoordinator = BSML::Helpers::GetMainFlowCoordinator();
             return mainFlowCoordinator ? mainFlowCoordinator->_beatmapLevelsModel : nullptr;
         }
@@ -208,7 +211,7 @@ namespace BeatSaberQuestAP {
         waitingForSongs = true;
         int waitGeneration = generation;
         BSML::MainThreadScheduler::ScheduleUntil(
-            [] { return SongCore::API::Loading::AreSongsLoaded() && !SongCore::API::Loading::AreSongsRefreshing(); },
+            [] { return Hooks::IsMainMenuReady() && SongCore::API::Loading::AreSongsLoaded() && !SongCore::API::Loading::AreSongsRefreshing(); },
             [this, waitGeneration] {
                 if (waitGeneration != generation || !waitingForSongs)
                     return;
@@ -221,7 +224,7 @@ namespace BeatSaberQuestAP {
     void ContentResolver::Evaluate() {
         if (!active)
             return;
-        if (!SongCore::API::Loading::AreSongsLoaded() || SongCore::API::Loading::AreSongsRefreshing()) {
+        if (!Hooks::IsMainMenuReady() || !SongCore::API::Loading::AreSongsLoaded() || SongCore::API::Loading::AreSongsRefreshing()) {
             report.checking = true;
             report.progressText = "Waiting for songs to finish loading...";
             Publish();
@@ -241,7 +244,12 @@ namespace BeatSaberQuestAP {
             requiredMaps.insert(ident.mapIdentifier);
 
             if (ident.isOfficial) {
-                auto level = levelsModel ? FindOfficialLevel(levelsModel, ident.officialLevelId) : nullptr;
+                GlobalNamespace::BeatmapLevel* level = nullptr;
+                try {
+                    level = levelsModel ? FindOfficialLevel(levelsModel, ident.officialLevelId) : nullptr;
+                } catch (std::exception const& error) {
+                    logger.warn("Official level lookup failed for {}: {}", ident.officialLevelId, error.what());
+                }
                 if (!level) {
                     unplayableMaps.insert(ident.mapIdentifier);
                     unavailable.push_back("Official song '" + ident.officialLevelId + "' is not in this game version");
@@ -291,35 +299,60 @@ namespace BeatSaberQuestAP {
             return;
         }
 
+        auto entitlements = levelsModel->entitlements;
+        if (!entitlements) {
+            logger.warn("Entitlement model unavailable; skipping the DLC ownership check");
+            report.checking = false;
+            report.progressText.clear();
+            Publish();
+            return;
+        }
+
         report.progressText = "Checking DLC ownership...";
         Publish();
 
         auto pendingChecks = std::make_shared<int>(static_cast<int>(officialLevelIds.size()));
         auto packsByLevel = std::make_shared<std::map<std::string, MissingDlcPack>>();
         int checkGeneration = generation;
+        auto finishOneCheck = [this, pendingChecks, packsByLevel, checkGeneration] {
+            if (checkGeneration != generation || --*pendingChecks > 0)
+                return;
+            for (auto& [packId, missingPack] : *packsByLevel)
+                report.missingPacks.push_back(missingPack);
+            report.checking = false;
+            report.progressText.clear();
+            Publish();
+        };
+
         for (auto const& levelId : officialLevelIds) {
-            auto task = SafePtr(levelsModel->entitlements->GetLevelEntitlementStatusAsync(levelId, System::Threading::CancellationToken::get_None()));
+            // a game exception here must not take the game down with it
+            SafePtr<System::Threading::Tasks::Task_1<GlobalNamespace::EntitlementStatus>> task;
+            try {
+                task.emplace(entitlements->GetLevelEntitlementStatusAsync(levelId, System::Threading::CancellationToken::get_None()));
+            } catch (std::exception const& error) {
+                logger.warn("Entitlement check failed for {}: {}", levelId, error.what());
+                finishOneCheck();
+                continue;
+            }
             BSML::MainThreadScheduler::ScheduleUntil(
-                [task] { return task->IsCompleted; },
-                [this, task, levelId, levelsModel, pendingChecks, packsByLevel, checkGeneration] {
+                [task] { return !task || task->IsCompleted; },
+                [this, task, levelId, levelsModel, packsByLevel, checkGeneration, finishOneCheck] {
                     if (checkGeneration != generation)
                         return;
-                    bool notOwned = !task->IsFaulted && task->Result == GlobalNamespace::EntitlementStatus::NotOwned;
-                    if (notOwned) {
-                        auto pack = levelsModel->GetLevelPackForLevelId(levelId);
-                        std::string packId = pack ? static_cast<std::string>(pack->packID) : levelId;
-                        auto& missingPack = (*packsByLevel)[packId];
-                        missingPack.packId = packId;
-                        missingPack.packName = pack ? static_cast<std::string>(pack->packName) : levelId;
-                        missingPack.requiredDifficulties++;
+                    try {
+                        bool notOwned = task && !task->IsFaulted && task->Result == GlobalNamespace::EntitlementStatus::NotOwned;
+                        if (notOwned) {
+                            auto pack = levelsModel->GetLevelPackForLevelId(levelId);
+                            std::string packId = pack ? static_cast<std::string>(pack->packID) : levelId;
+                            auto& missingPack = (*packsByLevel)[packId];
+                            missingPack.packId = packId;
+                            missingPack.packName = pack ? static_cast<std::string>(pack->packName) : levelId;
+                            missingPack.requiredDifficulties++;
+                        }
+                    } catch (std::exception const& error) {
+                        logger.warn("Entitlement result unreadable for {}: {}", levelId, error.what());
                     }
-                    if (--*pendingChecks > 0)
-                        return;
-                    for (auto& [packId, missingPack] : *packsByLevel)
-                        report.missingPacks.push_back(missingPack);
-                    report.checking = false;
-                    report.progressText.clear();
-                    Publish();
+                    finishOneCheck();
                 }
             );
         }

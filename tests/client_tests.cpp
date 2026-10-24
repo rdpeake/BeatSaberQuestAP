@@ -230,6 +230,10 @@ int main() {
     ArchipelagoClient client(callbacks, [&](std::function<void()> work) { queue.Post(std::move(work)); }, certificateFile);
     client.SetReconnectDelays({std::chrono::milliseconds(200), std::chrono::milliseconds(400)});
 
+    Expect(ArchipelagoClient::CandidateUrls("192.168.1.132", 38281) == std::vector<std::string>({"ws://192.168.1.132:38281", "wss://192.168.1.132:38281"}), "LAN addresses try plain websockets first");
+    Expect(ArchipelagoClient::CandidateUrls("archipelago.gg", 38281).front() == "wss://archipelago.gg:38281", "public hosts try TLS first");
+    Expect(ArchipelagoClient::CandidateUrls("wss://my.server:1234/", 38281) == std::vector<std::string>({"wss://my.server:1234"}), "an explicit scheme is kept");
+
     client.Connect({"127.0.0.1", mockServerPort, "Player3", "wrong"});
     Expect(queue.PumpUntil([&] { return lastState == ConnectionState::Failed; }), "wrong password fails");
     Expect(lastDetail.find("wrong password") != std::string::npos, "refusal reason reported");
@@ -238,7 +242,7 @@ int main() {
     Expect(lastState == ConnectionState::Failed && server.JoinCount() == 0, "a slot never joined is not retried");
 
     client.Connect({"127.0.0.1", mockServerPort, "Player3", "secret"});
-    Expect(queue.PumpUntil([&] { return lastState == ConnectionState::Connected && itemUpdates > 0; }), "falls back from wss to ws and connects");
+    Expect(queue.PumpUntil([&] { return lastState == ConnectionState::Connected && itemUpdates > 0; }), "connects to a local server");
     Expect(receivedSlotData.has_value() && receivedSlotData->deathLinkEnabled, "slot data delivered");
     Expect(receivedSlotDataJson.find("node_to_keystr") != std::string::npos, "raw slot data delivered for saving");
     Expect(client.GetSlotAlias() == "Saber Player", "alias read from players");
