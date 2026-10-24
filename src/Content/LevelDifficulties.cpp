@@ -53,7 +53,7 @@ namespace BeatSaberQuestAP {
         std::vector<std::pair<std::string, int>> difficulties;
         if (!level)
             return difficulties;
-        for (auto const& characteristic : KnownCharacteristics()) {
+        for (auto characteristic : KnownCharacteristics()) {
             std::string characteristicName = static_cast<std::string>(characteristic->serializedName);
             for (int difficulty = 0; difficulty < difficultyCount; difficulty++) {
                 if (!HasBeatmap(level, characteristic, static_cast<GlobalNamespace::BeatmapDifficulty>(difficulty)))
