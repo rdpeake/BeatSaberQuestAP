@@ -41,7 +41,7 @@ jobs:
         with:
           workflow_token: ${{ secrets.GITHUB_TOKEN }}
           restore: false
-          cache: true
+          cache: false
 
       # failures are echoed as annotations, which stay readable where raw logs are not
       - name: Restore qpm dependencies
