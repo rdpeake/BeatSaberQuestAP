@@ -13,7 +13,7 @@ This is a Quest port of [BeatSaberAP](https://github.com/CurrentlyPending/BeatSa
 
 1. Download `BeatSaberQuestAP.qmod` from the latest build.
 2. Drag it into MBF.
-3. Optionally, drag the host's `.apbs` patch into MBF as well. It is copied to the mod's folder and unpacked into a playlist on the next launch. You can also copy it by hand to `/sdcard/ModData/com.beatgames.beatsaber/Mods/beatsaberquestap/` and press **Import .apbs playlist** in the Archipelago menu.
+3. Optionally, drag the host's `.apbs` patch into MBF as well. It is copied to the mod's folder and unpacked into a playlist on the next launch. You can also copy it by hand to `/sdcard/ModData/com.beatgames.beatsaber/Mods/BeatSaberQuestAP/` and press **Import .apbs playlist** in the Archipelago menu.
 
 ## Playing
 

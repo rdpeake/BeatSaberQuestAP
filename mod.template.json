@@ -18,7 +18,7 @@
   "copyExtensions": [
     {
       "extension": "apbs",
-      "destination": "/sdcard/ModData/com.beatgames.beatsaber/Mods/beatsaberquestap/"
+      "destination": "/sdcard/ModData/com.beatgames.beatsaber/Mods/BeatSaberQuestAP/"
     }
   ]
 }

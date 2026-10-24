@@ -33,15 +33,23 @@ jobs:
 
       - uses: seanmiddleditch/gha-setup-ninja@v5
 
-      - name: Point the build at the runner's NDK
-        run: echo "$ANDROID_NDK_LATEST_HOME" > ${GITHUB_WORKSPACE}/ndkpath.txt
-
       - name: Install qpm
         uses: Fernthedev/qpm-action@v1
         with:
           workflow_token: ${{ secrets.GITHUB_TOKEN }}
           restore: false
           cache: false
+
+      # beatsaber-hook 6.4 does not build with the libc++ in NDK 30+
+      - name: Select NDK 27
+        run: |
+          ndk_path="$(ls -d "$ANDROID_HOME"/ndk/27.* 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$ndk_path" ]; then
+            qpm ndk download 27
+            ndk_path="$(qpm ndk path 27)"
+          fi
+          echo "Using NDK at $ndk_path"
+          echo "$ndk_path" > "${GITHUB_WORKSPACE}/ndkpath.txt"
 
       # failures are echoed as annotations, which stay readable where raw logs are not
       - name: Restore qpm dependencies
