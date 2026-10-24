@@ -53,8 +53,6 @@ namespace BeatSaberQuestAP::PlaylistImporter {
 
     std::string ImportPendingPatches() {
         std::filesystem::path const searchDirectories[] = {ModPaths::DataDirectory(), ModPaths::PlaylistsDirectory()};
-        int importedPlaylists = 0;
-        int failedPatches = 0;
         std::error_code ignoredError;
 
         std::vector<std::filesystem::path> patchFiles;
@@ -67,29 +65,66 @@ namespace BeatSaberQuestAP::PlaylistImporter {
             }
         }
 
+        // the playlists are only read for hash hints; the level list filter already shows the seed's songs
+        auto extractDirectory = std::filesystem::path(ModPaths::DataDirectory()) / "apbs-extract";
+        int readPatches = 0;
+        int failedPatches = 0;
         for (auto const& patchFile : patchFiles) {
             try {
-                auto written = Archipelago::ExtractPlaylistsFromApbs(patchFile.string(), ModPaths::PlaylistsDirectory());
-                importedPlaylists += static_cast<int>(written.size());
-                for (auto const& playlistPath : written)
+                for (auto const& playlistPath : Archipelago::ExtractPlaylistsFromApbs(patchFile.string(), extractDirectory.string()))
                     LearnHashesFromPlaylist(playlistPath);
-                // keep the patch, renamed, in case the player needs it again
+                readPatches++;
                 std::filesystem::rename(patchFile, patchFile.string() + ".imported", ignoredError);
-                logger.info("Imported {} playlist(s) from {}", written.size(), patchFile.string());
+                logger.info("Read {}", patchFile.string());
             } catch (std::exception const& error) {
                 failedPatches++;
-                logger.error("Could not import {}: {}", patchFile.string(), error.what());
+                logger.error("Could not read {}: {}", patchFile.string(), error.what());
             }
         }
+        std::filesystem::remove_all(extractDirectory, ignoredError);
 
-        if (importedPlaylists > 0)
-            SongCore::API::Loading::RefreshLevelPacks();
-
-        if (importedPlaylists == 0 && failedPatches == 0)
+        if (readPatches == 0 && failedPatches == 0)
             return "";
-        std::string summary = "Imported " + std::to_string(importedPlaylists) + " playlist(s)";
+        std::string summary = "Read " + std::to_string(readPatches) + " .apbs file(s)";
         if (failedPatches > 0)
-            summary += ", " + std::to_string(failedPatches) + " .apbs file(s) could not be read";
+            summary += ", " + std::to_string(failedPatches) + " could not be read";
         return summary;
+    }
+
+    int RemoveImportedPlaylists() {
+        std::error_code ignoredError;
+        auto playlistsDirectory = std::filesystem::path(ModPaths::PlaylistsDirectory());
+        auto archiveDirectory = std::filesystem::path(ModPaths::DataDirectory()) / "removed-playlists";
+        if (!std::filesystem::is_directory(playlistsDirectory, ignoredError))
+            return 0;
+
+        int removed = 0;
+        for (auto const& entry : std::filesystem::directory_iterator(playlistsDirectory, ignoredError)) {
+            if (!entry.is_regular_file(ignoredError) || Archipelago::ToLower(entry.path().extension().string()) != ".bplist")
+                continue;
+            std::ifstream stream(entry.path());
+            std::stringstream contents;
+            contents << stream.rdbuf();
+            stream.close();
+            rapidjson::Document playlist;
+            playlist.Parse(contents.str().c_str());
+            // earlier builds copied these from .apbs patches
+            bool fromApworld = !playlist.HasParseError() && playlist.IsObject()
+                && playlist.HasMember("playlistAuthor") && playlist["playlistAuthor"].IsString()
+                && std::string_view(playlist["playlistAuthor"].GetString()) == "Archipelago"
+                && playlist.HasMember("customData") && playlist["customData"].IsObject()
+                && playlist["customData"].HasMember("node_connections");
+            if (!fromApworld)
+                continue;
+            std::filesystem::create_directories(archiveDirectory, ignoredError);
+            std::filesystem::rename(entry.path(), archiveDirectory / entry.path().filename(), ignoredError);
+            if (!ignoredError)
+                removed++;
+        }
+        if (removed > 0) {
+            logger.info("Moved {} Archipelago playlist(s) to {}", removed, archiveDirectory.string());
+            SongCore::API::Loading::RefreshLevelPacks();
+        }
+        return removed;
     }
 }

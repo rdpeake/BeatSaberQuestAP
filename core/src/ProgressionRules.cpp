@@ -120,6 +120,12 @@ namespace Archipelago {
         return -1;
     }
 
+    std::vector<int64_t> LocationsForNode(SlotData const& slotData, uint32_t node) {
+        Progression goalUnlocked;
+        goalUnlocked.goalMapUnlocked = true;
+        return LocationsForClear(slotData, goalUnlocked, node, slotData.gradeCount - 1);
+    }
+
     std::vector<int64_t> LocationsForClear(SlotData const& slotData, Progression const& progression, uint32_t node, int gradeIndex) {
         std::vector<int64_t> locations;
         auto position = PositionForNode(slotData, node);

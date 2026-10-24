@@ -27,6 +27,8 @@ namespace {
 
     LastLevelListRequest lastRequest;
     bool refreshing = false;
+    // unlocks that arrive while the list is hidden, such as mid-song, apply when it shows again
+    bool refreshWhenShown = false;
 
     LevelList* FilterToUnlockedLevels(LevelList* beatmapLevels) {
         auto& session = BeatSaberQuestAP::Session::Instance();
@@ -76,15 +78,27 @@ MAKE_HOOK_MATCH(
     LevelCollectionTableView_SetData(self, FilterToUnlockedLevels(beatmapLevels), favoriteLevelIds, beatmapLevelsAreSorted, sortBeatmapLevels);
 }
 
+MAKE_HOOK_MATCH(LevelCollectionTableView_OnEnable, &LevelCollectionTableView::OnEnable, void, LevelCollectionTableView* self) {
+    LevelCollectionTableView_OnEnable(self);
+    if (refreshWhenShown && lastRequest.table && static_cast<LevelCollectionTableView*>(lastRequest.table) == self)
+        BeatSaberQuestAP::Hooks::RefreshLevelList();
+}
+
 namespace BeatSaberQuestAP::Hooks {
 
     void InstallLevelListFilter() {
         INSTALL_HOOK(logger, LevelCollectionTableView_SetData);
+        INSTALL_HOOK(logger, LevelCollectionTableView_OnEnable);
     }
 
     void RefreshLevelList() {
-        if (!lastRequest.table || !lastRequest.table->isActiveAndEnabled || !lastRequest.unfilteredLevels)
+        if (!lastRequest.table || !lastRequest.unfilteredLevels)
             return;
+        if (!lastRequest.table->isActiveAndEnabled) {
+            refreshWhenShown = true;
+            return;
+        }
+        refreshWhenShown = false;
         refreshing = true;
         lastRequest.table->SetData(
             lastRequest.unfilteredLevels.ptr(),

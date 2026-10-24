@@ -156,6 +156,7 @@ namespace {
         auto progression = ComputeProgression(slotData, {});
 
         ExpectEqual(LocationsForClear(slotData, progression, 4, GradeIndexFromRankName("A")), std::vector<int64_t>({2007, 2008, 2009}), "tech song 1 at A");
+        ExpectEqual(LocationsForNode(slotData, 4), std::vector<int64_t>({2007, 2008, 2009}), "every check of a node");
         ExpectEqual(LocationsForClear(slotData, progression, 0, GradeIndexFromRankName("C")), std::vector<int64_t>({1001}), "speed song 0 at C");
         ExpectEqual(LocationsForClear(slotData, progression, 8, GradeIndexFromRankName("SS")), std::vector<int64_t>({4007, 4008, 4009}), "grades above the threshold are not checks");
         Expect(LocationsForClear(slotData, progression, 4, GradeIndexFromRankName("D")).empty(), "below C sends nothing in accuracy mode");

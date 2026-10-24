@@ -206,6 +206,7 @@ int main() {
     std::vector<ReceivedItem> latestItems;
     std::vector<DeathLinkEvent> deathLinks;
     std::vector<int64_t> unconfirmedLocations;
+    std::vector<int64_t> checkedLocations;
     int itemUpdates = 0;
     int connectedCount = 0;
 
@@ -225,6 +226,7 @@ int main() {
         itemUpdates++;
     };
     callbacks.onPendingLocationsChanged = [&](std::vector<int64_t> const& locations) { unconfirmedLocations = locations; };
+    callbacks.onCheckedLocationsChanged = [&](std::vector<int64_t> const& locations) { checkedLocations = locations; };
     callbacks.onDeathLink = [&](DeathLinkEvent const& deathLink) { deathLinks.push_back(deathLink); };
 
     ArchipelagoClient client(callbacks, [&](std::function<void()> work) { queue.Post(std::move(work)); }, certificateFile);
@@ -258,6 +260,7 @@ int main() {
     Expect(queue.PumpUntil([&] { return latestItems.size() == 3; }), "out-of-order index triggers resync");
     Expect(!latestItems.empty() && latestItems.back().itemName == "Victory", "victory received");
     Expect(queue.PumpUntil([&] { return unconfirmedLocations.empty(); }), "confirmed checks are no longer pending");
+    Expect(queue.PumpUntil([&] { return checkedLocations == std::vector<int64_t>({1007, 1008}); }), "confirmed checks reported");
     {
         std::lock_guard lock(server.recordMutex);
         Expect(server.checkedLocations == std::set<int64_t>({1007, 1008}), "location ids sent");

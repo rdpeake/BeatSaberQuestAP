@@ -17,6 +17,8 @@ namespace Archipelago {
         std::string slotDataJson;
         std::vector<std::string> receivedItemNames;
         std::vector<int64_t> unconfirmedLocations;
+        // confirmed by the server
+        std::vector<int64_t> checkedLocations;
     };
 
     std::optional<SavedSession> LoadSavedSession(std::string const& filePath);

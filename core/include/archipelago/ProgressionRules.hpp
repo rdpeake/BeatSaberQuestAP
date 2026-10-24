@@ -47,4 +47,7 @@ namespace Archipelago {
 
     // ids checked by clearing a node with the given grade; the goal check is held back until enough Bloq Keys arrive
     std::vector<int64_t> LocationsForClear(SlotData const& slotData, Progression const& progression, uint32_t node, int gradeIndex);
+
+    // every check a node holds, lowest grade first
+    std::vector<int64_t> LocationsForNode(SlotData const& slotData, uint32_t node);
 }

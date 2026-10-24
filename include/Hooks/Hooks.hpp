@@ -7,6 +7,7 @@ namespace BeatSaberQuestAP::Hooks {
     void InstallLevelResults();
     void InstallDifficultyLock();
     void InstallMainMenuReady();
+    void InstallCheckMarkers();
 
     // the main menu has shown at least once, so game services are safe to use
     bool IsMainMenuReady();

@@ -52,6 +52,12 @@ namespace Archipelago {
                     session.unconfirmedLocations.push_back(location.GetInt64());
             }
         }
+        if (document.HasMember("checkedLocations") && document["checkedLocations"].IsArray()) {
+            for (auto const& location : document["checkedLocations"].GetArray()) {
+                if (location.IsInt64())
+                    session.checkedLocations.push_back(location.GetInt64());
+            }
+        }
         return session;
     }
 
@@ -77,6 +83,11 @@ namespace Archipelago {
         writer.Key("unconfirmedLocations");
         writer.StartArray();
         for (auto location : session.unconfirmedLocations)
+            writer.Int64(location);
+        writer.EndArray();
+        writer.Key("checkedLocations");
+        writer.StartArray();
+        for (auto location : session.checkedLocations)
             writer.Int64(location);
         writer.EndArray();
         writer.EndObject();

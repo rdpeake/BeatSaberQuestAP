@@ -6,7 +6,6 @@
 #include <memory>
 
 #include "Content/ContentResolver.hpp"
-#include "Content/PlaylistImporter.hpp"
 #include "Content/SongListExporter.hpp"
 #include "HMUI/CurvedTextMeshPro.hpp"
 #include "HMUI/ViewController.hpp"
@@ -33,7 +32,6 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
         struct MenuWidgets {
             UnityW<HMUI::CurvedTextMeshPro> connectionText;
             UnityW<HMUI::CurvedTextMeshPro> contentText;
-            UnityW<HMUI::CurvedTextMeshPro> importText;
             UnityW<HMUI::CurvedTextMeshPro> logText;
             UnityW<HMUI::CurvedTextMeshPro> exportText;
             UnityW<UnityEngine::UI::Button> exportButton;
@@ -275,12 +273,6 @@ namespace BeatSaberQuestAP::ArchipelagoMenu {
                 ContentResolver::Instance().DownloadMissingSongs();
             });
             widgets.storeButtonList = BSML::Lite::CreateVerticalLayoutGroup(container);
-
-            widgets.importText = CreateMessageText(container, 3.0f);
-            BSML::Lite::CreateUIButton(container, "Import .apbs playlist", [] {
-                auto summary = PlaylistImporter::ImportPendingPatches();
-                SetMessageText(widgets.importText, summary.empty() ? "No .apbs files found in ModData/.../Mods/" MOD_ID " or the Playlists folder" : summary);
-            });
 
             widgets.exportText = CreateMessageText(container, 3.0f);
             widgets.exportButton = BSML::Lite::CreateUIButton(container, "Export song list for YAML", [] { SongListExporter::Export(); });

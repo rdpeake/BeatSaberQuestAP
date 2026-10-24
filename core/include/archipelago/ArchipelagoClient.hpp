@@ -64,6 +64,7 @@ namespace Archipelago {
         std::function<void(SlotData const& slotData, std::string const& slotDataJson)> onConnected;
         std::function<void(std::vector<ReceivedItem> const& allItems)> onItemsChanged;
         std::function<void(std::vector<int64_t> const& unconfirmedLocations)> onPendingLocationsChanged;
+        std::function<void(std::vector<int64_t> const& checkedLocations)> onCheckedLocationsChanged;
         std::function<void(DeathLinkEvent const& deathLink)> onDeathLink;
         std::function<void(ServerMessage const& message)> onServerMessage;
     };
@@ -121,6 +122,7 @@ namespace Archipelago {
         void SetState(ConnectionState state, std::string const& detail);
         void DispatchCallback(std::function<void()> callback);
         void NotifyPendingLocationsChanged();
+        void NotifyCheckedLocationsChanged();
 
         ClientCallbacks callbacks;
         Dispatcher dispatcher;
@@ -151,6 +153,7 @@ namespace Archipelago {
         std::map<int, std::string> playerGames;
         std::vector<ReceivedItem> receivedItems;
         std::set<int64_t> pendingLocationChecks;
+        std::set<int64_t> confirmedLocationChecks;
         bool goalPending = false;
         std::string slotAlias;
         int slotNumber = 0;

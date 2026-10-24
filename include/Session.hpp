@@ -26,6 +26,11 @@ namespace BeatSaberQuestAP {
         std::string text;
     };
 
+    struct CheckProgress {
+        int completed = 0;
+        int total = 0;
+    };
+
     struct FinishedLevel {
         std::string levelId;
         std::string songName;
@@ -65,6 +70,8 @@ namespace BeatSaberQuestAP {
         // nullopt when the level cannot be matched to an ident yet (unknown custom hash)
         std::optional<std::string> IdentFor(std::string_view levelId, std::string_view characteristic, int difficulty) const;
         bool IsIdentInSeed(std::string const& ident) const;
+        // checks sent or confirmed out of all the level's checks; nullopt when the song is not in the seed
+        std::optional<CheckProgress> GetCheckProgress(std::string_view levelId) const;
         // the seed's characteristic and difficulty pairs for this level, e.g. "Standard Expert+"; empty when the song is not in the seed
         std::vector<std::string> SeedDifficultiesFor(std::string_view levelId) const;
 
@@ -87,6 +94,7 @@ namespace BeatSaberQuestAP {
         void HandleConnected(Archipelago::SlotData const& slotData, std::string const& slotDataJson);
         void HandleItemsChanged(std::vector<Archipelago::ReceivedItem> const& items);
         void HandlePendingLocationsChanged(std::vector<int64_t> const& unconfirmedLocations);
+        void HandleCheckedLocationsChanged(std::vector<int64_t> const& checkedLocations);
         void HandleDeathLink(Archipelago::DeathLinkEvent const& deathLink);
 
         std::unique_ptr<Archipelago::ArchipelagoClient> client;

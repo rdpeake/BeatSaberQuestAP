@@ -89,6 +89,7 @@ namespace {
         session.slotDataJson = R"({"game_mode":1,"node_to_keystr":{}})";
         session.receivedItemNames = {"Progressive Speed Unlock", "Bloq Key"};
         session.unconfirmedLocations = {1013, 4007};
+        session.checkedLocations = {1001, 1002};
         Expect(WriteSavedSession(sessionPath, session), "session saved");
 
         auto loaded = LoadSavedSession(sessionPath);
@@ -97,6 +98,7 @@ namespace {
         Expect(loaded && loaded->slotDataJson == session.slotDataJson, "slot data survives as text");
         Expect(loaded && loaded->receivedItemNames == session.receivedItemNames, "items survive");
         Expect(loaded && loaded->unconfirmedLocations == session.unconfirmedLocations, "unsent checks survive");
+        Expect(loaded && loaded->checkedLocations == session.checkedLocations, "confirmed checks survive");
         Expect(ReadFile(sessionPath).find("password\"") == std::string::npos, "no password field is written");
 
         DeleteSavedSession(sessionPath);

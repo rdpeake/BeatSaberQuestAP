@@ -1,5 +1,7 @@
 #include "Session.hpp"
 
+#include <algorithm>
+
 #include "Content/ContentResolver.hpp"
 #include "DeathLink.hpp"
 #include "Logger.hpp"
@@ -52,6 +54,7 @@ namespace BeatSaberQuestAP {
         callbacks.onConnected = [this](Archipelago::SlotData const& newSlotData, std::string const& slotDataJson) { HandleConnected(newSlotData, slotDataJson); };
         callbacks.onItemsChanged = [this](std::vector<Archipelago::ReceivedItem> const& items) { HandleItemsChanged(items); };
         callbacks.onPendingLocationsChanged = [this](std::vector<int64_t> const& unconfirmedLocations) { HandlePendingLocationsChanged(unconfirmedLocations); };
+        callbacks.onCheckedLocationsChanged = [this](std::vector<int64_t> const& checkedLocations) { HandleCheckedLocationsChanged(checkedLocations); };
         callbacks.onDeathLink = [this](Archipelago::DeathLinkEvent const& deathLink) { HandleDeathLink(deathLink); };
         callbacks.onServerMessage = [this](Archipelago::ServerMessage const& message) {
             logger.info("Server [{}]: {}", message.type, message.text);
@@ -194,6 +197,32 @@ namespace BeatSaberQuestAP {
                 seedDifficulties.push_back(parsed->characteristic + " " + DescribeDifficulty(parsed->difficulty));
         }
         return seedDifficulties;
+    }
+
+    std::optional<CheckProgress> Session::GetCheckProgress(std::string_view levelId) const {
+        auto mapIdentifier = ContentResolver::Instance().MapIdentifierForLevelId(levelId);
+        if (!slotData || !activeSession || !mapIdentifier)
+            return std::nullopt;
+        auto isDone = [this](int64_t location) {
+            auto const& checked = activeSession->checkedLocations;
+            auto const& unconfirmed = activeSession->unconfirmedLocations;
+            return std::find(checked.begin(), checked.end(), location) != checked.end()
+                || std::find(unconfirmed.begin(), unconfirmed.end(), location) != unconfirmed.end();
+        };
+        std::optional<CheckProgress> progress;
+        for (auto const& [node, ident] : slotData->nodeToIdent) {
+            auto parsed = Archipelago::ParseIdent(ident);
+            if (!parsed || !Archipelago::EqualsIgnoreCase(parsed->mapIdentifier, *mapIdentifier))
+                continue;
+            if (!progress)
+                progress.emplace();
+            for (auto location : Archipelago::LocationsForNode(*slotData, node)) {
+                progress->total++;
+                if (isDone(location))
+                    progress->completed++;
+            }
+        }
+        return progress;
     }
 
     bool Session::IsIdentInSeed(std::string const& ident) const {
@@ -358,6 +387,14 @@ namespace BeatSaberQuestAP {
         if (!activeSession)
             return;
         activeSession->unconfirmedLocations = unconfirmedLocations;
+        SaveActiveSession();
+        NotifyChanged();
+    }
+
+    void Session::HandleCheckedLocationsChanged(std::vector<int64_t> const& checkedLocations) {
+        if (!activeSession || activeSession->checkedLocations == checkedLocations)
+            return;
+        activeSession->checkedLocations = checkedLocations;
         SaveActiveSession();
         NotifyChanged();
     }

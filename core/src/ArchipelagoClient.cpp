@@ -176,6 +176,7 @@ namespace Archipelago {
             itemNamesById.clear();
             if (!resumingSession) {
                 pendingLocationChecks.clear();
+                confirmedLocationChecks.clear();
                 goalPending = false;
             }
             deathLinkTagged = false;
@@ -467,6 +468,17 @@ namespace Archipelago {
             callbacks.onPendingLocationsChanged(GetPendingLocationChecks());
     }
 
+    void ArchipelagoClient::NotifyCheckedLocationsChanged() {
+        if (!callbacks.onCheckedLocationsChanged)
+            return;
+        std::vector<int64_t> checkedLocations;
+        {
+            std::lock_guard lock(stateMutex);
+            checkedLocations.assign(confirmedLocationChecks.begin(), confirmedLocationChecks.end());
+        }
+        callbacks.onCheckedLocationsChanged(checkedLocations);
+    }
+
     void ArchipelagoClient::HandlePacket(std::string const& packetText) {
         rapidjson::Document packets;
         packets.Parse(packetText.c_str(), packetText.size());
@@ -586,7 +598,9 @@ namespace Archipelago {
                                 slotAlias = player["alias"].GetString();
                         }
                     }
-                    for (auto checkedLocation : ReadLocationList(packet, "checked_locations"))
+                    auto checkedLocations = ReadLocationList(packet, "checked_locations");
+                    confirmedLocationChecks = std::set<int64_t>(checkedLocations.begin(), checkedLocations.end());
+                    for (auto checkedLocation : checkedLocations)
                         pendingLocationChecks.erase(checkedLocation);
                 }
 
@@ -604,6 +618,7 @@ namespace Archipelago {
                 SetState(ConnectionState::Connected, "Connected as " + GetSlotAlias());
                 FlushPendingLocationChecks();
                 NotifyPendingLocationsChanged();
+                NotifyCheckedLocationsChanged();
                 bool sendGoal = false;
                 {
                     std::lock_guard lock(stateMutex);
@@ -625,10 +640,13 @@ namespace Archipelago {
                     continue;
                 {
                     std::lock_guard lock(stateMutex);
-                    for (auto checkedLocation : confirmed)
+                    for (auto checkedLocation : confirmed) {
                         pendingLocationChecks.erase(checkedLocation);
+                        confirmedLocationChecks.insert(checkedLocation);
+                    }
                 }
                 NotifyPendingLocationsChanged();
+                NotifyCheckedLocationsChanged();
             } else if (command == "ReceivedItems") {
                 std::vector<ReceivedItem> itemsSnapshot;
                 bool needsResync = false;

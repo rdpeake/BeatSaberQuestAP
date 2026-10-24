@@ -35,6 +35,7 @@ MOD_EXPORT_FUNC void late_load() {
     Hooks::InstallLevelResults();
     Hooks::InstallDifficultyLock();
     Hooks::InstallMainMenuReady();
+    Hooks::InstallCheckMarkers();
 
     ArchipelagoMenu::Register();
 
@@ -50,6 +51,7 @@ MOD_EXPORT_FUNC void late_load() {
         BSML::MainThreadScheduler::Schedule([] {
             if (!importedInitialPatches) {
                 importedInitialPatches = true;
+                PlaylistImporter::RemoveImportedPlaylists();
                 PlaylistImporter::ImportPendingPatches();
             }
             ContentResolver::Instance().HandleSongsLoaded();
