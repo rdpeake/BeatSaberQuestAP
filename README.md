@@ -7,12 +7,13 @@ This is a Quest port of [BeatSaberAP](https://github.com/CurrentlyPending/BeatSa
 ## Requirements
 
 - Beat Saber **1.40.8** modded with [ModsBeforeFriday](https://mbf.bsquest.xyz) (MBF downgrades a newer install automatically)
-- Core mods for 1.40.8, which MBF installs: SongCore, BSML, SongDownloader, PlaylistManager
+- SongCore, BSML, BeatSaverPlusPlus and web-utils, which MBF installs along with the mod
+- PlaylistManager, to see the seed's playlists
 
 ## Installing
 
 1. Download `BeatSaberQuestAP.qmod` from the latest build.
-2. Drag it into MBF.
+2. Drag it into MBF. Dropping the download link onto MBF works too.
 3. You don't need the host's `.apbs` patch: the mod gets the seed's songs from the server and builds the seed's playlists itself.
 
 ## Playing
@@ -74,4 +75,4 @@ ctest --test-dir build-tests
 
 ## License
 
-LGPL-3.0, the same as the PC client this is ported from.
+MIT; see `LICENSE`. Credits and the licenses of included third-party code are in `THIRD_PARTY_NOTICES.md`.
