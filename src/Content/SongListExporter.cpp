@@ -50,7 +50,6 @@ namespace BeatSaberQuestAP::SongListExporter {
             // song index waiting on a BeatSaver key, by hash
             std::map<std::string, size_t> songsAwaitingKey;
             int pendingSteps = 0;
-            int skippedDlcPacks = 0;
             bool dlcCheckFailed = false;
         };
 

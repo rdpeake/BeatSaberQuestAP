@@ -61,9 +61,9 @@ namespace BeatSaberQuestAP::SeedPlaylists {
             auto hashes = ContentResolver::Instance().HashesForBeatSaverKey(parsed->beatSaverKey);
             if (hashes.empty())
                 return std::nullopt;
-            // a missing song still gets listed so PlaylistManager can download it
+            // a missing song is still listed, as the latest version, so PlaylistManager can download it
             auto installed = GameLevels::FindInstalledCustomLevel(hashes);
-            song.levelId = installed ? static_cast<std::string>(installed->levelID) : std::string(Archipelago::customLevelPrefix) + hashes.back();
+            song.levelId = installed ? static_cast<std::string>(installed->levelID) : std::string(Archipelago::customLevelPrefix) + hashes.front();
             song.hash = Archipelago::HashFromCustomLevelId(song.levelId);
             return song;
         }

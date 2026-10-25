@@ -6,14 +6,14 @@ This is a Quest port of [BeatSaberAP](https://github.com/CurrentlyPending/BeatSa
 
 ## Requirements
 
-- Beat Saber **1.40.8** modded with [ModsBeforeFriday](https://mbf.bsquest.xyz) (MBF downgrades a newer install automatically)
-- SongCore, BSML, BeatSaverPlusPlus and web-utils, which MBF installs along with the mod
+- A modded install of Beat Saber **1.40.8** (see the [BSMG wiki](https://bsmg.wiki/quest-modding.html))
+- SongCore, BSML, BeatSaverPlusPlus and web-utils, which your mod manager installs along with the mod
 - PlaylistManager, to see the seed's playlists
 
 ## Installing
 
-1. Download `BeatSaberQuestAP.qmod` from the latest build.
-2. Drag it into MBF. Dropping the download link onto MBF works too.
+1. Download `BeatSaberQuestAP.qmod` from the [latest release](https://github.com/rdpeake/BeatSaberQuestAP/releases/latest).
+2. Install it with your mod manager.
 3. You don't need the host's `.apbs` patch: the mod gets the seed's songs from the server and builds the seed's playlists itself.
 
 ## Playing
@@ -54,7 +54,7 @@ Seeds, items and location ids match the apworld, so PC and Quest players can sha
 
 ## Building
 
-Builds run on GitHub Actions for every push to `main` and `dev/**` branches; download `BeatSaberQuestAP.qmod` from the run's artifacts.
+Builds run on GitHub Actions for every push to `main` and `dev/**` branches; download `BeatSaberQuestAP.qmod` from the run's artifacts. Pushing a `v<version>` tag that matches `qpm.json` also creates a draft release with the qmod and the unstripped library for reading crash logs.
 
 To build locally you need PowerShell 7, CMake, Ninja, [qpm](https://github.com/QuestPackageManager/QPM.CLI) and Android NDK 27 (`qpm ndk download 27`; NDK 30 is too new for beatsaber-hook 6.4):
 
