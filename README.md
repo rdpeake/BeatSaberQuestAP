@@ -54,7 +54,7 @@ Seeds, items and location ids match the apworld, so PC and Quest players can sha
 
 ## Building
 
-Builds run on GitHub Actions for every push to `main` and `dev/**` branches; download `BeatSaberQuestAP.qmod` from the run's artifacts. Pushing a `v<version>` tag that matches `qpm.json` also creates a draft release with the qmod and the unstripped library for reading crash logs.
+Builds run on GitHub Actions for every push to `main` and `dev/**` branches; download `BeatSaberQuestAP.qmod` from the run's artifacts. To release, run the Build workflow on `main` with **Create a draft release** ticked, or push a `v<version>` tag matching `qpm.json`; either makes a draft release with the qmod and the unstripped library for reading crash logs.
 
 To build locally you need PowerShell 7, CMake, Ninja, [qpm](https://github.com/QuestPackageManager/QPM.CLI) and Android NDK 27 (`qpm ndk download 27`; NDK 30 is too new for beatsaber-hook 6.4):
 
