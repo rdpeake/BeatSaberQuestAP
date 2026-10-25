@@ -1,0 +1,114 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "dev/**"
+    tags:
+      - "v*"
+  pull_request:
+
+env:
+  module_id: beatsaberquestap
+  qmod_name: BeatSaberQuestAP
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Build and run core tests
+        run: |
+          cmake -G Ninja -S tests -B build-tests -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build-tests
+          ./scripts/annotate-failure.sh "host tests" ctest --test-dir build-tests --output-on-failure
+
+  quest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Install qpm
+        uses: Fernthedev/qpm-action@v1
+        with:
+          workflow_token: ${{ secrets.GITHUB_TOKEN }}
+          restore: false
+          cache: false
+
+      # beatsaber-hook 6.4 does not build with the libc++ in NDK 30+
+      - name: Select NDK 27
+        run: |
+          ndk_path="$(ls -d "$ANDROID_HOME"/ndk/27.* 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$ndk_path" ]; then
+            qpm ndk download 27
+            ndk_path="$(qpm ndk path 27)"
+          fi
+          echo "Using NDK at $ndk_path"
+          echo "$ndk_path" > "${GITHUB_WORKSPACE}/ndkpath.txt"
+
+      # failures are echoed as annotations, which stay readable where raw logs are not
+      - name: Restore qpm dependencies
+        run: ./scripts/annotate-failure.sh "qpm restore" qpm restore
+
+      - name: Build and package qmod
+        run: ./scripts/annotate-failure.sh "qmod build" qpm s qmod
+
+      - name: Show qmod manifest
+        run: echo "::notice title=mod.json::$(unzip -p ./${{ env.qmod_name }}.qmod mod.json | tr -d '\n\r')"
+
+      - name: Check tag matches the mod version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          mod_version="$(unzip -p ./${{ env.qmod_name }}.qmod mod.json | jq -r .version)"
+          if [ "v$mod_version" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error title=version mismatch::tag ${GITHUB_REF_NAME} but mod.json says $mod_version"
+            exit 1
+          fi
+
+      - name: Upload qmod
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.qmod_name }}.qmod
+          path: ./${{ env.qmod_name }}.qmod
+          if-no-files-found: error
+
+      - name: Upload unstripped library for crash logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug_lib${{ env.module_id }}.so
+          path: ./build/debug/lib${{ env.module_id }}.so
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [host-tests, quest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.qmod_name }}.qmod
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: debug_lib${{ env.module_id }}.so
+
+      - name: Name the debug library
+        run: mv lib${{ env.module_id }}.so lib${{ env.module_id }}-debug.so
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            ${{ env.qmod_name }}.qmod
+            lib${{ env.module_id }}-debug.so
