@@ -226,7 +226,12 @@ int main() {
         itemUpdates++;
     };
     callbacks.onPendingLocationsChanged = [&](std::vector<int64_t> const& locations) { unconfirmedLocations = locations; };
-    callbacks.onCheckedLocationsChanged = [&](std::vector<int64_t> const& locations) { checkedLocations = locations; };
+    int connectionsWhenChecksFirstReported = -1;
+    callbacks.onCheckedLocationsChanged = [&](std::vector<int64_t> const& locations) {
+        checkedLocations = locations;
+        if (connectionsWhenChecksFirstReported < 0)
+            connectionsWhenChecksFirstReported = connectedCount;
+    };
     callbacks.onDeathLink = [&](DeathLinkEvent const& deathLink) { deathLinks.push_back(deathLink); };
 
     ArchipelagoClient client(callbacks, [&](std::function<void()> work) { queue.Post(std::move(work)); }, certificateFile);
@@ -261,6 +266,7 @@ int main() {
     Expect(!latestItems.empty() && latestItems.back().itemName == "Victory", "victory received");
     Expect(queue.PumpUntil([&] { return unconfirmedLocations.empty(); }), "confirmed checks are no longer pending");
     Expect(queue.PumpUntil([&] { return checkedLocations == std::vector<int64_t>({1007, 1008}); }), "confirmed checks reported");
+    Expect(connectionsWhenChecksFirstReported == 1, "a first join reports checks after announcing the connection");
     {
         std::lock_guard lock(server.recordMutex);
         Expect(server.checkedLocations == std::set<int64_t>({1007, 1008}), "location ids sent");

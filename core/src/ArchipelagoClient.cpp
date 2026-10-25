@@ -622,8 +622,6 @@ namespace Archipelago {
 
                 SetState(ConnectionState::Connected, "Connected as " + GetSlotAlias());
                 FlushPendingLocationChecks();
-                NotifyPendingLocationsChanged();
-                NotifyCheckedLocationsChanged();
                 bool sendGoal = false;
                 {
                     std::lock_guard lock(stateMutex);
@@ -631,8 +629,11 @@ namespace Archipelago {
                 }
                 if (sendGoal)
                     SendGoalComplete();
+                // after onConnected, so a first join has a session to record them in
                 if (callbacks.onConnected)
                     callbacks.onConnected(slotData, slotDataJson);
+                NotifyPendingLocationsChanged();
+                NotifyCheckedLocationsChanged();
             } else if (command == "ConnectionRefused") {
                 std::string description = DescribeRefusal(packet);
                 CancelReconnectTimer();
