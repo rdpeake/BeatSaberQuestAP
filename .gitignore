@@ -1,0 +1,20 @@
+# qpm restore output
+extern/
+extern.cmake
+qpm_defines.cmake
+qpm.shared.json.bak
+ndkpath.txt
+
+# build output
+build/
+build-tests/
+mod.json
+*.qmod
+*.zip
+*.so
+
+# editor
+.vscode/
+.idea/
+.cache/
+compile_commands.json
